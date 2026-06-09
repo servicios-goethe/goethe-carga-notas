@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Goethe Schule - Carga de notas</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img src="logo.jpg" alt="Goethe Schule">
+      <div>
+        <h1>Carga de notas</h1>
+        <p>Grilla de evaluación por curso</p>
+      </div>
+    </div>
+    <div class="status-pill" id="saveStatus">Borrador sin guardar</div>
+  </header>
+
+  <main>
+    <section class="filters" aria-label="Filtros de carga">
+      <label>
+        Curso
+        <select id="courseFilter">
+          <option value="EP2A">2do Grado A</option>
+          <option value="EP2B">2do Grado B</option>
+          <option value="EP2C">2do Grado C</option>
+        </select>
+      </label>
+      <label>
+        Materia
+        <select id="subjectFilter">
+          <option>Matemática</option>
+          <option>Lengua</option>
+          <option>Conocimiento del mundo</option>
+        </select>
+      </label>
+      <label>
+        Evaluación
+        <select id="evaluationFilter">
+          <option>Diagnóstico de numeración</option>
+          <option>Trabajo práctico 1</option>
+          <option>Cierre de unidad</option>
+        </select>
+      </label>
+      <label>
+        Buscar alumno
+        <input id="searchInput" type="search" placeholder="Apellido o nombre">
+      </label>
+      <div class="actions">
+        <button id="loadMasterBtn" type="button">Importar alumnos</button>
+        <button id="criteriaBtn" type="button">Consignas</button>
+        <button id="exportBtn" type="button">Exportar resultados</button>
+        <button id="saveBtn" type="button" class="primary">Guardar borrador</button>
+      </div>
+    </section>
+
+    <section class="summary" aria-label="Resumen">
+      <div>
+        <span>Alumnos</span>
+        <strong id="studentCount">0</strong>
+      </div>
+      <div>
+        <span>Completos</span>
+        <strong id="completeCount">0</strong>
+      </div>
+      <div>
+        <span>Promedio</span>
+        <strong id="averageScore">0%</strong>
+      </div>
+      <div>
+        <span>Alertas</span>
+        <strong id="alertCount">0</strong>
+      </div>
+    </section>
+
+    <section class="grid-shell" aria-label="Grilla de calificaciones">
+      <div class="grid-toolbar">
+        <div>
+          <strong id="gridTitle">2do Grado A</strong>
+          <span id="gridSubtitle">Matemática · Diagnóstico de numeración</span>
+        </div>
+        <label class="toggle">
+          <input id="showIncomplete" type="checkbox">
+          Solo incompletos
+        </label>
+      </div>
+      <div class="table-wrap">
+        <table id="gradeTable">
+          <thead></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <input id="masterFile" type="file" accept=".csv,.xlsx" hidden>
+  <div class="modal-backdrop" id="criteriaModal" hidden>
+    <section class="modal" role="dialog" aria-modal="true" aria-labelledby="criteriaTitle">
+      <header class="modal-header">
+        <div>
+          <h2 id="criteriaTitle">Consignas de evaluación</h2>
+          <p>Configura las columnas visibles para el curso seleccionado.</p>
+        </div>
+        <button id="closeCriteriaBtn" type="button" class="icon-btn" aria-label="Cerrar">x</button>
+      </header>
+      <div class="criteria-list" id="criteriaList"></div>
+      <footer class="modal-footer">
+        <button id="addCriteriaBtn" type="button">Agregar consigna</button>
+        <button id="applyCriteriaBtn" type="button" class="primary">Aplicar cambios</button>
+      </footer>
+    </section>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
