@@ -40,6 +40,7 @@ const searchInput = document.getElementById("searchInput");
 const showIncomplete = document.getElementById("showIncomplete");
 const criteriaModal = document.getElementById("criteriaModal");
 const criteriaList = document.getElementById("criteriaList");
+const tableWrap = document.querySelector(".table-wrap");
 
 function activeConsignas() {
   return consignas.filter(c => c.active);
@@ -210,6 +211,49 @@ function findStudent(id) {
   return state[courseFilter.value].find(alumno => alumno.id === id);
 }
 
+function editableControls() {
+  return [...table.querySelectorAll("tbody input, tbody select")]
+    .filter(control => !control.disabled && control.offsetParent !== null);
+}
+
+function focusGridControl(control) {
+  if (!control) return;
+  control.focus();
+  control.select?.();
+
+  const cell = control.closest("td");
+  if (!cell || !tableWrap) return;
+
+  const wrapBox = tableWrap.getBoundingClientRect();
+  const cellBox = cell.getBoundingClientRect();
+  const stickyWidth = 52 + 260;
+  const leftSafe = wrapBox.left + stickyWidth + 18;
+  const rightSafe = wrapBox.right - 18;
+
+  if (cellBox.left < leftSafe) {
+    tableWrap.scrollLeft += cellBox.left - leftSafe;
+  } else if (cellBox.right > rightSafe) {
+    tableWrap.scrollLeft += cellBox.right - rightSafe;
+  }
+
+  control.scrollIntoView({ block: "nearest", inline: "nearest" });
+}
+
+table.addEventListener("keydown", event => {
+  if (event.key !== "Tab") return;
+
+  const controls = editableControls();
+  const currentIndex = controls.indexOf(event.target);
+  if (currentIndex === -1) return;
+
+  event.preventDefault();
+  const direction = event.shiftKey ? -1 : 1;
+  const nextIndex = currentIndex + direction;
+  const nextControl = controls[nextIndex];
+
+  if (nextControl) focusGridControl(nextControl);
+});
+
 table.addEventListener("input", event => {
   const target = event.target;
   const id = target.dataset.id;
@@ -221,7 +265,7 @@ table.addEventListener("input", event => {
     document.getElementById("saveStatus").textContent = "Cambios sin guardar";
     renderBody();
     const next = table.querySelector(`[data-id="${id}"][data-score="${scoreIndex}"]`);
-    if (next) next.focus();
+    if (next) focusGridControl(next);
   } else if (target.dataset.field) {
     alumno[target.dataset.field] = target.value;
     document.getElementById("saveStatus").textContent = "Cambios sin guardar";
