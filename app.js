@@ -28,6 +28,7 @@ let alumnos = [];
 let mapas = [];
 let consignas = [];
 let state = {};
+const storagePrefix = "goethe-mapa-aprendizajes";
 
 const table = document.getElementById("gradeTable");
 const courseFilter = document.getElementById("courseFilter");
@@ -124,6 +125,10 @@ function stateKey() {
   return `${curso}||${materia}||${evaluacion}`;
 }
 
+function storageKey() {
+  return `${storagePrefix}||${stateKey()}`;
+}
+
 function activeConsignas() {
   return consignas.filter(c => c.active);
 }
@@ -201,6 +206,7 @@ function ensureGridState() {
       observacion: ""
     };
   });
+  restoreLocalDraft(false);
 }
 
 function populateSelect(select, values, selectedValue) {
@@ -321,6 +327,11 @@ function updateSummary() {
   document.getElementById("gridSubtitle").textContent = `${subjectFilter.value || "Sin materia"} - ${evaluationFilter.value || "Sin evaluacion"}`;
 }
 
+function currentRows() {
+  ensureGridState();
+  return state[stateKey()] || [];
+}
+
 function renderCriteriaEditor() {
   criteriaList.innerHTML = consignas.map((c, index) => `
     <div class="criteria-row">
@@ -358,7 +369,7 @@ function normalizeConsignas() {
 }
 
 function findStudent(id) {
-  return state[stateKey()].find(alumno => alumno.id === id);
+  return currentRows().find(alumno => alumno.id === id);
 }
 
 function editableControls() {
@@ -394,7 +405,7 @@ function applyImportedAlumnos(rows) {
     Nombres: row.nombres,
     Apellido: row.apellido,
     DNI: row.dni,
-    Curso: row.curso || "*",
+    Curso: row.curso,
     eMail: row.email || row.emailalumno || row["e-mail"] || ""
   })).filter(row => row.DNI && row.Curso);
 
@@ -437,6 +448,106 @@ function applyImportedMapas(rows) {
   saveStatus.textContent = `Mapas importados: ${mapas.length} consignas`;
 }
 
+function buildCargaRows(estado = "borrador") {
+  const { curso, evaluacion } = selectedContext();
+  const evaluacionId = currentEvaluationId();
+  const fecha = new Date().toISOString();
+  const data = [];
+
+  currentRows().forEach(alumno => {
+    activeConsignas().forEach(consigna => {
+      data.push({
+        CargaID: `${evaluacionId}-${alumno.dni}-${consigna.consignaId}`,
+        EvaluacionID: evaluacionId,
+        ConsignaID: consigna.consignaId,
+        DNI: alumno.dni,
+        Curso: curso,
+        DocenteEmail: "",
+        Puntaje: alumno.scores[consigna.scoreKey] ?? "",
+        UsoMaterial: alumno.material,
+        PudoResolver: alumno.pudoResolver,
+        Observacion: alumno.observacion,
+        EstadoCarga: estado,
+        FechaGuardado: fecha,
+        FechaCierre: estado === "cerrado" ? fecha : ""
+      });
+    });
+  });
+
+  return data;
+}
+
+function applyCargaRows(rows) {
+  const byDni = new Map(currentRows().map(alumno => [String(alumno.dni), alumno]));
+  const byConsigna = new Map(consignas.map(consigna => [String(consigna.consignaId), consigna]));
+  let applied = 0;
+
+  rows.forEach(row => {
+    const alumno = byDni.get(String(row.DNI || row.dni));
+    const consigna = byConsigna.get(String(row.ConsignaID || row.consignaid));
+    if (!alumno || !consigna) return;
+
+    const puntaje = row.Puntaje ?? row.puntaje ?? "";
+    alumno.scores[consigna.scoreKey] = puntaje === "" ? "" : Number(String(puntaje).replace(",", "."));
+    alumno.material = row.UsoMaterial || row.usomaterial || alumno.material;
+    alumno.pudoResolver = row.PudoResolver || row.pudoresolver || alumno.pudoResolver;
+    alumno.observacion = row.Observacion || row.observacion || alumno.observacion;
+    applied += 1;
+  });
+
+  return applied;
+}
+
+function saveLocalDraft() {
+  const payload = {
+    savedAt: new Date().toISOString(),
+    context: selectedContext(),
+    cargas: buildCargaRows("borrador")
+  };
+  localStorage.setItem(storageKey(), JSON.stringify(payload));
+  return payload;
+}
+
+function restoreLocalDraft(showStatus = true) {
+  const raw = localStorage.getItem(storageKey());
+  if (!raw) return false;
+
+  try {
+    const payload = JSON.parse(raw);
+    applyCargaRows(payload.cargas || []);
+    if (showStatus) {
+      const date = new Date(payload.savedAt).toLocaleString("es-AR");
+      saveStatus.textContent = `Borrador recuperado ${date}`;
+    }
+    return true;
+  } catch {
+    localStorage.removeItem(storageKey());
+    return false;
+  }
+}
+
+function applyImportedCargas(rows) {
+  const mapped = rows.map(row => ({
+    EvaluacionID: row.evaluacionid,
+    ConsignaID: row.consignaid,
+    DNI: row.dni,
+    Curso: row.curso,
+    Puntaje: row.puntaje,
+    UsoMaterial: row.usomaterial,
+    PudoResolver: row.pudoresolver,
+    Observacion: row.observacion
+  })).filter(row => row.DNI && row.ConsignaID);
+
+  const currentEvaluation = currentEvaluationId();
+  const filtered = mapped.filter(row =>
+    (!row.Curso || row.Curso === courseFilter.value) &&
+    (!row.EvaluacionID || row.EvaluacionID === currentEvaluation || row.EvaluacionID === evaluationFilter.value)
+  );
+  const applied = applyCargaRows(filtered);
+  renderBody();
+  saveStatus.textContent = `Cargas importadas: ${applied} registros aplicados`;
+}
+
 function readCSVFile(file, callback) {
   const reader = new FileReader();
   reader.onload = () => callback(parseCSV(String(reader.result)));
@@ -445,31 +556,8 @@ function readCSVFile(file, callback) {
 
 function exportCargas() {
   const { curso, materia, evaluacion } = selectedContext();
-  const evaluacionId = currentEvaluationId();
-  const rows = state[stateKey()] || [];
   const headers = ["CargaID", "EvaluacionID", "ConsignaID", "DNI", "Curso", "DocenteEmail", "Puntaje", "UsoMaterial", "PudoResolver", "Observacion", "EstadoCarga", "FechaGuardado", "FechaCierre"];
-  const fecha = new Date().toISOString();
-  const data = [];
-
-  rows.forEach(alumno => {
-    activeConsignas().forEach(consigna => {
-      data.push([
-        `${evaluacion}-${alumno.dni}-${consigna.consignaId}`,
-        evaluacionId,
-        consigna.consignaId,
-        alumno.dni,
-        curso,
-        "",
-        alumno.scores[consigna.scoreKey] ?? "",
-        alumno.material,
-        alumno.pudoResolver,
-        alumno.observacion,
-        "borrador",
-        fecha,
-        ""
-      ]);
-    });
-  });
+  const data = buildCargaRows("borrador").map(row => headers.map(header => row[header]));
 
   const csv = [headers, ...data].map(row => row.map(value => `"${String(value).replaceAll('"', '""')}"`).join(",")).join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
@@ -526,18 +614,21 @@ courseFilter.addEventListener("input", () => {
   refreshFilters();
   renderHeader();
   renderBody();
+  restoreLocalDraft();
 });
 
 subjectFilter.addEventListener("input", () => {
   refreshFilters();
   renderHeader();
   renderBody();
+  restoreLocalDraft();
 });
 
 evaluationFilter.addEventListener("input", () => {
   syncConsignasFromSelection();
   renderHeader();
   renderBody();
+  restoreLocalDraft();
 });
 
 [searchInput, showIncomplete].forEach(control => {
@@ -546,7 +637,8 @@ evaluationFilter.addEventListener("input", () => {
 
 document.getElementById("saveBtn").addEventListener("click", () => {
   const now = new Date().toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
-  saveStatus.textContent = `Borrador preparado ${now}`;
+  saveLocalDraft();
+  saveStatus.textContent = `Borrador guardado ${now}`;
 });
 
 document.getElementById("exportBtn").addEventListener("click", exportCargas);
@@ -559,6 +651,10 @@ document.getElementById("loadMapsBtn").addEventListener("click", () => {
   document.getElementById("mapsFile").click();
 });
 
+document.getElementById("loadLoadsBtn").addEventListener("click", () => {
+  document.getElementById("loadsFile").click();
+});
+
 document.getElementById("masterFile").addEventListener("change", event => {
   const file = event.target.files?.[0];
   if (file) readCSVFile(file, applyImportedAlumnos);
@@ -568,6 +664,12 @@ document.getElementById("masterFile").addEventListener("change", event => {
 document.getElementById("mapsFile").addEventListener("change", event => {
   const file = event.target.files?.[0];
   if (file) readCSVFile(file, applyImportedMapas);
+  event.target.value = "";
+});
+
+document.getElementById("loadsFile").addEventListener("change", event => {
+  const file = event.target.files?.[0];
+  if (file) readCSVFile(file, applyImportedCargas);
   event.target.value = "";
 });
 
