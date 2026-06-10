@@ -83,7 +83,7 @@ main {
 
 .filters {
   display: grid;
-  grid-template-columns: repeat(4, minmax(150px, 1fr)) auto;
+  grid-template-columns: minmax(150px, 225px) minmax(150px, 225px) minmax(190px, 1fr) minmax(180px, 245px);
   gap: 14px;
   align-items: end;
   padding: 16px;
@@ -128,9 +128,26 @@ button.primary {
 }
 
 .actions {
+  grid-column: 1 / -1;
   display: flex;
   gap: 8px;
-  justify-content: flex-end;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+.actions button {
+  min-width: 132px;
+  max-width: 190px;
+  height: auto;
+  min-height: 38px;
+  white-space: normal;
+  line-height: 1.15;
+  padding-top: 7px;
+  padding-bottom: 7px;
+}
+
+.actions button.primary {
+  margin-left: auto;
 }
 
 .summary {
@@ -444,12 +461,18 @@ td select:focus {
   }
 
   .actions {
+    grid-column: auto;
     justify-content: stretch;
     flex-wrap: wrap;
   }
 
   .actions button {
     flex: 1 1 160px;
+    max-width: none;
+  }
+
+  .actions button.primary {
+    margin-left: 0;
   }
 
   .summary {
