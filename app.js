@@ -21,7 +21,7 @@ const demoMapas = [
   ["MAP-EP2-MAT-DIAG", "MAT", "Matematica", "EVA-001", "Diagnostico de numeracion", "EP2B", "2026", "C01", "Representacion de numeros", "1", "0.5", "1", "TRUE"],
   ["MAP-EP2-MAT-DIAG", "MAT", "Matematica", "EVA-001", "Diagnostico de numeracion", "EP2B", "2026", "C02", "Orden de la serie numerica", "2", "0.5", "2", "TRUE"]
 ].map(([MapaID, MateriaID, MateriaNombre, EvaluacionID, EvaluacionNombre, Curso, AnioLectivo, ConsignaID, ConsignaContenido, ConsignaPuntajeMax, ConsignaIncremento, ConsignaOrden, ConsignaActiva]) => ({
-  MapaID, MateriaID, MateriaNombre, EvaluacionID, EvaluacionNombre, Curso, AnioLectivo, ConsignaID, ConsignaContenido, ConsignaPuntajeMax, ConsignaIncremento, ConsignaOrden, ConsignaActiva
+  MapaID, MateriaID, MateriaNombre, EvaluacionID, EvaluacionNombre, Curso, AnioLectivo, ConsignaID, ConsignaContenido, ConsignaPuntajeMax, ConsignaIncremento, ConsignaOrden, ConsignaActiva, FechaCaducidad: ""
 }));
 
 let alumnos = [];
@@ -111,10 +111,19 @@ function rowAppliesToCourse(row, curso) {
   return !row.Curso || row.Curso === "*" || row.Curso === curso;
 }
 
+function todayISO() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function rowIsActiveByDate(row) {
+  return !row.FechaCaducidad || row.FechaCaducidad >= todayISO();
+}
+
 function currentEvaluationId() {
   const { curso, materia, evaluacion } = selectedContext();
   return mapas.find(row =>
     rowAppliesToCourse(row, curso) &&
+    rowIsActiveByDate(row) &&
     row.MateriaNombre === materia &&
     row.EvaluacionNombre === evaluacion
   )?.EvaluacionID || evaluacion;
@@ -152,7 +161,7 @@ function mapRowToConsigna(row, index) {
 function syncConsignasFromSelection() {
   const { curso, materia, evaluacion } = selectedContext();
   const rows = mapas
-    .filter(row => rowAppliesToCourse(row, curso) && row.MateriaNombre === materia && row.EvaluacionNombre === evaluacion)
+    .filter(row => rowAppliesToCourse(row, curso) && rowIsActiveByDate(row) && row.MateriaNombre === materia && row.EvaluacionNombre === evaluacion)
     .sort((a, b) => Number(a.ConsignaOrden) - Number(b.ConsignaOrden));
 
   consignas = rows.map((row, index) => mapRowToConsigna({
@@ -183,6 +192,10 @@ function alumnoNombre(alumno) {
 
 function alumnosDelCurso() {
   return alumnos.filter(alumno => alumno.Curso === courseFilter.value);
+}
+
+function cursosDisponibles() {
+  return unique(alumnos.map(alumno => alumno.Curso));
 }
 
 function ensureGridState() {
@@ -216,16 +229,16 @@ function populateSelect(select, values, selectedValue) {
 
 function refreshFilters({ keepSelection = true } = {}) {
   const previous = selectedContext();
-  const cursos = unique(alumnos.map(alumno => alumno.Curso));
+  const cursos = cursosDisponibles();
   populateSelect(courseFilter, cursos, keepSelection ? previous.curso : "");
 
   const materias = unique(mapas
-    .filter(row => rowAppliesToCourse(row, courseFilter.value))
+    .filter(row => rowAppliesToCourse(row, courseFilter.value) && rowIsActiveByDate(row))
     .map(row => row.MateriaNombre));
   populateSelect(subjectFilter, materias, keepSelection ? previous.materia : "");
 
   const evaluaciones = unique(mapas
-    .filter(row => rowAppliesToCourse(row, courseFilter.value) && row.MateriaNombre === subjectFilter.value)
+    .filter(row => rowAppliesToCourse(row, courseFilter.value) && rowIsActiveByDate(row) && row.MateriaNombre === subjectFilter.value)
     .map(row => row.EvaluacionNombre));
   populateSelect(evaluationFilter, evaluaciones, keepSelection ? previous.evaluacion : "");
 
@@ -333,7 +346,32 @@ function currentRows() {
 }
 
 function renderCriteriaEditor() {
-  criteriaList.innerHTML = consignas.map((c, index) => `
+  const { curso } = selectedContext();
+  const evaluationRows = mapas.filter(row =>
+    row.MateriaNombre === subjectFilter.value &&
+    row.EvaluacionNombre === evaluationFilter.value &&
+    row.EvaluacionID === currentEvaluationId()
+  );
+  const selectedCourses = unique(evaluationRows.map(row => row.Curso).filter(Boolean));
+  const courses = cursosDisponibles();
+  const expiration = evaluationRows.find(row => row.FechaCaducidad)?.FechaCaducidad || "";
+
+  criteriaList.innerHTML = `
+    <div class="criteria-config">
+      <label>
+        Aplicar a cursos
+        <div class="course-checks">
+          ${courses.map(course => `
+            <span><input type="checkbox" data-course="${course}" ${selectedCourses.includes("*") || selectedCourses.includes(course) || (!selectedCourses.length && course === curso) ? "checked" : ""}> ${course}</span>
+          `).join("")}
+        </div>
+      </label>
+      <label>
+        Fecha de caducidad
+        <input id="criteriaExpiration" type="date" value="${expiration}">
+      </label>
+    </div>
+    ${consignas.map((c, index) => `
     <div class="criteria-row">
       <label>
         Visible
@@ -356,7 +394,65 @@ function renderCriteriaEditor() {
         <input type="number" min="1" step="1" value="${c.id}" data-criteria="${index}" data-field="id">
       </label>
     </div>
-  `).join("");
+  `).join("")}
+  `;
+}
+
+function selectedCriteriaCourses() {
+  return [...criteriaList.querySelectorAll("[data-course]:checked")].map(input => input.dataset.course);
+}
+
+function upsertMapRowsFromCriteria() {
+  const selectedCourses = selectedCriteriaCourses();
+  if (!selectedCourses.length) {
+    alert("Selecciona al menos un curso.");
+    return false;
+  }
+
+  const expiration = document.getElementById("criteriaExpiration")?.value || "";
+  const baseRows = mapas.filter(row =>
+    row.MateriaNombre === subjectFilter.value &&
+    row.EvaluacionNombre === evaluationFilter.value &&
+    row.EvaluacionID === currentEvaluationId()
+  );
+  const base = baseRows[0] || {};
+  const materiaNombre = subjectFilter.value;
+  const evaluacionNombre = evaluationFilter.value;
+  const materiaId = base.MateriaID || materiaNombre.toUpperCase().slice(0, 3);
+  const evaluacionId = base.EvaluacionID || evaluacionNombre.toUpperCase().replace(/\s+/g, "-");
+  const mapaId = base.MapaID || `MAP-${evaluacionId}`;
+  const anioLectivo = base.AnioLectivo || String(new Date().getFullYear());
+
+  const targetCourseSet = new Set(selectedCourses);
+  mapas = mapas.filter(row => !(
+    row.MateriaNombre === materiaNombre &&
+    row.EvaluacionNombre === evaluacionNombre &&
+    row.EvaluacionID === evaluacionId &&
+    targetCourseSet.has(row.Curso)
+  ));
+
+  selectedCourses.forEach(course => {
+    consignas.forEach((consigna, index) => {
+      mapas.push({
+        MapaID: mapaId,
+        MateriaID: materiaId,
+        MateriaNombre: materiaNombre,
+        EvaluacionID: evaluacionId,
+        EvaluacionNombre: evaluacionNombre,
+        Curso: course,
+        AnioLectivo: anioLectivo,
+        ConsignaID: consigna.consignaId || String(consigna.scoreKey),
+        ConsignaContenido: consigna.titulo,
+        ConsignaPuntajeMax: String(consigna.max),
+        ConsignaIncremento: String(consigna.step),
+        ConsignaOrden: String(index + 1),
+        ConsignaActiva: consigna.active ? "TRUE" : "FALSE",
+        FechaCaducidad: expiration
+      });
+    });
+  });
+
+  return true;
 }
 
 function normalizeConsignas() {
@@ -438,7 +534,8 @@ function applyImportedMapas(rows) {
     ConsignaPuntajeMax: row.consignapuntajemax,
     ConsignaIncremento: row.consignaincremento,
     ConsignaOrden: row.consignaorden,
-    ConsignaActiva: row.consignaactiva || "TRUE"
+    ConsignaActiva: row.consignaactiva || "TRUE",
+    FechaCaducidad: row.fechacaducidad || row.caducidad || ""
   })).filter(row => row.MateriaNombre && row.EvaluacionNombre && row.ConsignaContenido);
 
   state = {};
@@ -569,6 +666,19 @@ function exportCargas() {
   URL.revokeObjectURL(url);
 }
 
+function exportMapas() {
+  const headers = ["MapaID", "MateriaID", "MateriaNombre", "EvaluacionID", "EvaluacionNombre", "Curso", "AnioLectivo", "ConsignaID", "ConsignaContenido", "ConsignaPuntajeMax", "ConsignaIncremento", "ConsignaOrden", "ConsignaActiva", "FechaCaducidad"];
+  const rows = mapas.map(row => headers.map(header => row[header] ?? ""));
+  const csv = [headers, ...rows].map(row => row.map(value => `"${String(value).replaceAll('"', '""')}"`).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "mapas_actualizados.csv";
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 table.addEventListener("keydown", event => {
   if (event.key !== "Tab") return;
 
@@ -642,6 +752,7 @@ document.getElementById("saveBtn").addEventListener("click", () => {
 });
 
 document.getElementById("exportBtn").addEventListener("click", exportCargas);
+document.getElementById("exportMapsBtn").addEventListener("click", exportMapas);
 
 document.getElementById("loadMasterBtn").addEventListener("click", () => {
   document.getElementById("masterFile").click();
@@ -727,10 +838,12 @@ document.getElementById("applyCriteriaBtn").addEventListener("click", () => {
     return;
   }
   normalizeConsignas();
+  if (!upsertMapRowsFromCriteria()) return;
+  refreshFilters();
   renderHeader();
   renderBody();
   criteriaModal.hidden = true;
-  saveStatus.textContent = "Configuracion actualizada";
+  saveStatus.textContent = "Mapas actualizados";
 });
 
 alumnos = demoAlumnos;
