@@ -1,7 +1,7 @@
-Nombres,Apellido,DNI,Curso,eMail
-Franco,ARCHERI,41000001,EP2A,franco.archeri@goethe.edu
-Rafael,BARALDO,41000002,EP2A,rafael.baraldo@goethe.edu
-Francisca,BATTISTON,41000003,EP2A,francisca.battiston@goethe.edu
-Lena,BOERR,41000004,EP2A,lena.boerr@goethe.edu
-Felipe Andres,AGRES,42000001,EP2B,felipe.agres@goethe.edu
-Manuel,AGUIRRE,42000002,EP2B,manuel.aguirre@goethe.edu
+Nombres,Apellido,DNI,Nivel,Curso,eMail
+Franco,ARCHERI,41000001,EP,EP2A,franco.archeri@goethe.edu
+Rafael,BARALDO,41000002,EP,EP2A,rafael.baraldo@goethe.edu
+Francisca,BATTISTON,41000003,EP,EP2A,francisca.battiston@goethe.edu
+Lena,BOERR,41000004,EP,EP2A,lena.boerr@goethe.edu
+Felipe Andres,AGRES,42000001,EP,EP2B,felipe.agres@goethe.edu
+Manuel,AGUIRRE,42000002,EP,EP2B,manuel.aguirre@goethe.edu

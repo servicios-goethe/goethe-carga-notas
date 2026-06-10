@@ -1,12 +1,12 @@
 const demoAlumnos = [
-  { Nombres: "Franco", Apellido: "ARCHERI", DNI: "A001", Curso: "EP2A", eMail: "" },
-  { Nombres: "Rafael", Apellido: "BARALDO", DNI: "A002", Curso: "EP2A", eMail: "" },
-  { Nombres: "Francisca", Apellido: "BATTISTON", DNI: "A003", Curso: "EP2A", eMail: "" },
-  { Nombres: "Lena", Apellido: "BOERR", DNI: "A004", Curso: "EP2A", eMail: "" },
-  { Nombres: "Ana Katarina", Apellido: "BULE", DNI: "A005", Curso: "EP2A", eMail: "" },
-  { Nombres: "Felipe Andres", Apellido: "AGRES", DNI: "B001", Curso: "EP2B", eMail: "" },
-  { Nombres: "Manuel", Apellido: "AGUIRRE", DNI: "B002", Curso: "EP2B", eMail: "" },
-  { Nombres: "Valentin", Apellido: "BUCK", DNI: "B003", Curso: "EP2B", eMail: "" }
+  { Nombres: "Franco", Apellido: "ARCHERI", DNI: "A001", Nivel: "EP", Curso: "EP2A", eMail: "" },
+  { Nombres: "Rafael", Apellido: "BARALDO", DNI: "A002", Nivel: "EP", Curso: "EP2A", eMail: "" },
+  { Nombres: "Francisca", Apellido: "BATTISTON", DNI: "A003", Nivel: "EP", Curso: "EP2A", eMail: "" },
+  { Nombres: "Lena", Apellido: "BOERR", DNI: "A004", Nivel: "EP", Curso: "EP2A", eMail: "" },
+  { Nombres: "Ana Katarina", Apellido: "BULE", DNI: "A005", Nivel: "EP", Curso: "EP2A", eMail: "" },
+  { Nombres: "Felipe Andres", Apellido: "AGRES", DNI: "B001", Nivel: "EP", Curso: "EP2B", eMail: "" },
+  { Nombres: "Manuel", Apellido: "AGUIRRE", DNI: "B002", Nivel: "EP", Curso: "EP2B", eMail: "" },
+  { Nombres: "Valentin", Apellido: "BUCK", DNI: "B003", Nivel: "EP", Curso: "EP2B", eMail: "" }
 ];
 
 const demoMapas = [
@@ -21,7 +21,7 @@ const demoMapas = [
   ["MAP-EP2-MAT-DIAG", "MAT", "Matematica", "EVA-001", "Diagnostico de numeracion", "EP2B", "2026", "C01", "Representacion de numeros", "1", "0.5", "1", "TRUE"],
   ["MAP-EP2-MAT-DIAG", "MAT", "Matematica", "EVA-001", "Diagnostico de numeracion", "EP2B", "2026", "C02", "Orden de la serie numerica", "2", "0.5", "2", "TRUE"]
 ].map(([MapaID, MateriaID, MateriaNombre, EvaluacionID, EvaluacionNombre, Curso, AnioLectivo, ConsignaID, ConsignaContenido, ConsignaPuntajeMax, ConsignaIncremento, ConsignaOrden, ConsignaActiva]) => ({
-  MapaID, MateriaID, MateriaNombre, EvaluacionID, EvaluacionNombre, Curso, AnioLectivo, ConsignaID, ConsignaContenido, ConsignaPuntajeMax, ConsignaIncremento, ConsignaOrden, ConsignaActiva, FechaCaducidad: ""
+  MapaID, MateriaID, MateriaNombre, EvaluacionID, EvaluacionNombre, Nivel: "EP", Curso, AnioLectivo, ConsignaID, ConsignaContenido, ConsignaPuntajeMax, ConsignaIncremento, ConsignaOrden, ConsignaActiva, FechaCaducidad: ""
 }));
 
 let alumnos = [];
@@ -108,7 +108,9 @@ function selectedContext() {
 }
 
 function rowAppliesToCourse(row, curso) {
-  return !row.Curso || row.Curso === "*" || row.Curso === curso;
+  if (row.Curso === curso) return true;
+  if (!row.Curso || row.Curso === "*") return !row.Nivel || row.Nivel === nivelFromCurso(curso);
+  return false;
 }
 
 function todayISO() {
@@ -196,6 +198,19 @@ function alumnosDelCurso() {
 
 function cursosDisponibles() {
   return unique(alumnos.map(alumno => alumno.Curso));
+}
+
+function nivelFromCurso(curso) {
+  return alumnos.find(alumno => alumno.Curso === curso)?.Nivel || "";
+}
+
+function cursosPorNivel() {
+  return cursosDisponibles().reduce((groups, curso) => {
+    const nivel = nivelFromCurso(curso) || "Sin nivel";
+    groups[nivel] = groups[nivel] || [];
+    groups[nivel].push(curso);
+    return groups;
+  }, {});
 }
 
 function ensureGridState() {
@@ -353,7 +368,7 @@ function renderCriteriaEditor() {
     row.EvaluacionID === currentEvaluationId()
   );
   const selectedCourses = unique(evaluationRows.map(row => row.Curso).filter(Boolean));
-  const courses = cursosDisponibles();
+  const groupedCourses = cursosPorNivel();
   const expiration = evaluationRows.find(row => row.FechaCaducidad)?.FechaCaducidad || "";
 
   criteriaList.innerHTML = `
@@ -361,8 +376,18 @@ function renderCriteriaEditor() {
       <label>
         Aplicar a cursos
         <div class="course-checks">
-          ${courses.map(course => `
-            <span><input type="checkbox" data-course="${course}" ${selectedCourses.includes("*") || selectedCourses.includes(course) || (!selectedCourses.length && course === curso) ? "checked" : ""}> ${course}</span>
+          ${Object.entries(groupedCourses).map(([level, courses]) => `
+            <div class="course-group">
+              <label class="level-check">
+                <input type="checkbox" data-level="${level}">
+                ${level}
+              </label>
+              <div class="course-items">
+                ${courses.map(course => `
+                  <span><input type="checkbox" data-course="${course}" ${selectedCourses.includes("*") || selectedCourses.includes(course) || (!selectedCourses.length && course === curso) ? "checked" : ""}> ${course}</span>
+                `).join("")}
+              </div>
+            </div>
           `).join("")}
         </div>
       </label>
@@ -439,6 +464,7 @@ function upsertMapRowsFromCriteria() {
         MateriaNombre: materiaNombre,
         EvaluacionID: evaluacionId,
         EvaluacionNombre: evaluacionNombre,
+        Nivel: nivelFromCurso(course),
         Curso: course,
         AnioLectivo: anioLectivo,
         ConsignaID: consigna.consignaId || String(consigna.scoreKey),
@@ -501,6 +527,7 @@ function applyImportedAlumnos(rows) {
     Nombres: row.nombres,
     Apellido: row.apellido,
     DNI: row.dni,
+    Nivel: row.nivel || "",
     Curso: row.curso,
     eMail: row.email || row.emailalumno || row["e-mail"] || ""
   })).filter(row => row.DNI && row.Curso);
@@ -527,6 +554,7 @@ function applyImportedMapas(rows) {
     MateriaNombre: row.materianombre || row.materia || row.idmateria,
     EvaluacionID: row.evaluacionid || row.evaluacion,
     EvaluacionNombre: row.evaluacionnombre || row.evaluacion,
+    Nivel: row.nivel || "",
     Curso: row.curso,
     AnioLectivo: row.aniolectivo || row.anolectivo || "",
     ConsignaID: row.consignaid || `${row.evaluacion || "EVA"}-${row.consignaorden}`,
@@ -667,7 +695,7 @@ function exportCargas() {
 }
 
 function exportMapas() {
-  const headers = ["MapaID", "MateriaID", "MateriaNombre", "EvaluacionID", "EvaluacionNombre", "Curso", "AnioLectivo", "ConsignaID", "ConsignaContenido", "ConsignaPuntajeMax", "ConsignaIncremento", "ConsignaOrden", "ConsignaActiva", "FechaCaducidad"];
+  const headers = ["MapaID", "MateriaID", "MateriaNombre", "EvaluacionID", "EvaluacionNombre", "Nivel", "Curso", "AnioLectivo", "ConsignaID", "ConsignaContenido", "ConsignaPuntajeMax", "ConsignaIncremento", "ConsignaOrden", "ConsignaActiva", "FechaCaducidad"];
   const rows = mapas.map(row => headers.map(header => row[header] ?? ""));
   const csv = [headers, ...rows].map(row => row.map(value => `"${String(value).replaceAll('"', '""')}"`).join(",")).join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
@@ -808,9 +836,17 @@ criteriaList.addEventListener("input", event => {
 });
 
 criteriaList.addEventListener("change", event => {
+  if (event.target.dataset.level) {
+    const group = event.target.closest(".course-group");
+    group?.querySelectorAll("[data-course]").forEach(input => {
+      input.checked = event.target.checked;
+    });
+    return;
+  }
+
   if (event.target.type === "checkbox") {
     const index = Number(event.target.dataset.criteria);
-    consignas[index].active = event.target.checked;
+    if (Number.isInteger(index)) consignas[index].active = event.target.checked;
   }
 });
 

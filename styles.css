@@ -392,29 +392,57 @@ td select:focus {
 
 .criteria-config {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) 190px;
+  grid-template-columns: minmax(320px, 1fr) 190px;
   gap: 14px;
   padding: 10px 0 16px;
   border-bottom: 2px solid var(--green);
 }
 
 .course-checks {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  min-height: 38px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  max-height: 210px;
+  overflow: auto;
   padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: #f9fbfa;
 }
 
+.course-group {
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.level-check {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 8px;
+  color: var(--green-dark);
+  font-size: 14px;
+}
+
+.course-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .course-checks span {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  padding: 3px 6px;
+  border-radius: 5px;
+  background: #f4f7f5;
   color: var(--ink);
   font-weight: 700;
+  font-size: 12px;
 }
 
 .course-checks input {
