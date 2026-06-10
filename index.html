@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Goethe Schule - Carga de notas</title>
+  <title>Goethe Schule - Mapa de Aprendizajes</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -11,8 +11,8 @@
     <div class="brand">
       <img src="logo.jpg" alt="Goethe Schule">
       <div>
-        <h1>Carga de notas</h1>
-        <p>Grilla de evaluación por curso</p>
+        <h1>Mapa de Aprendizajes</h1>
+        <p>Registro de habilidades y evidencias por curso</p>
       </div>
     </div>
     <div class="status-pill" id="saveStatus">Borrador sin guardar</div>
@@ -50,6 +50,7 @@
       </label>
       <div class="actions">
         <button id="loadMasterBtn" type="button">Importar alumnos</button>
+        <button id="loadMapsBtn" type="button">Importar mapas</button>
         <button id="criteriaBtn" type="button">Consignas</button>
         <button id="exportBtn" type="button">Exportar resultados</button>
         <button id="saveBtn" type="button" class="primary">Guardar borrador</button>
@@ -75,7 +76,7 @@
       </div>
     </section>
 
-    <section class="grid-shell" aria-label="Grilla de calificaciones">
+    <section class="grid-shell" aria-label="Mapa de aprendizajes">
       <div class="grid-toolbar">
         <div>
           <strong id="gridTitle">2do Grado A</strong>
@@ -95,7 +96,8 @@
     </section>
   </main>
 
-  <input id="masterFile" type="file" accept=".csv,.xlsx" hidden>
+  <input id="masterFile" type="file" accept=".csv" hidden>
+  <input id="mapsFile" type="file" accept=".csv" hidden>
   <div class="modal-backdrop" id="criteriaModal" hidden>
     <section class="modal" role="dialog" aria-modal="true" aria-labelledby="criteriaTitle">
       <header class="modal-header">

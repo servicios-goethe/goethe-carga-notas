@@ -1,35 +1,32 @@
-let consignas = [
-  { id: 1, scoreKey: 0, titulo: "Representación de números", max: 1, step: 0.5, active: true },
-  { id: 2, scoreKey: 1, titulo: "Orden de la serie numérica", max: 2, step: 0.5, active: true },
-  { id: 3, scoreKey: 2, titulo: "Recta numérica", max: 3, step: 0.5, active: true },
-  { id: 4, scoreKey: 3, titulo: "Anterior y posterior", max: 2, step: 0.5, active: true },
-  { id: 5, scoreKey: 4, titulo: "Sumas", max: 1.5, step: 0.5, active: true },
-  { id: 6, scoreKey: 5, titulo: "Restas", max: 1.5, step: 0.5, active: true },
-  { id: 7, scoreKey: 6, titulo: "Doble y mitad", max: 2, step: 0.5, active: true },
-  { id: 8, scoreKey: 7, titulo: "Uso del dinero", max: 2, step: 0.5, active: true }
+const demoAlumnos = [
+  { Nombres: "Franco", Apellido: "ARCHERI", DNI: "A001", Curso: "EP2A", eMail: "" },
+  { Nombres: "Rafael", Apellido: "BARALDO", DNI: "A002", Curso: "EP2A", eMail: "" },
+  { Nombres: "Francisca", Apellido: "BATTISTON", DNI: "A003", Curso: "EP2A", eMail: "" },
+  { Nombres: "Lena", Apellido: "BOERR", DNI: "A004", Curso: "EP2A", eMail: "" },
+  { Nombres: "Ana Katarina", Apellido: "BULE", DNI: "A005", Curso: "EP2A", eMail: "" },
+  { Nombres: "Felipe Andres", Apellido: "AGRES", DNI: "B001", Curso: "EP2B", eMail: "" },
+  { Nombres: "Manuel", Apellido: "AGUIRRE", DNI: "B002", Curso: "EP2B", eMail: "" },
+  { Nombres: "Valentin", Apellido: "BUCK", DNI: "B003", Curso: "EP2B", eMail: "" }
 ];
 
-const alumnosPorCurso = {
-  EP2A: [
-    ["A001", "ARCHERI, Franco"], ["A002", "BARALDO, Rafael"], ["A003", "BATTISTON, Francisca"],
-    ["A004", "BOERR, Lena"], ["A005", "BULE, Ana Katarina"], ["A006", "CORDOBA, Maite Lilou"],
-    ["A007", "ECHEVERRIA PAPP, Maia"], ["A008", "FAISST, Joshua Sebastian"], ["A009", "GEBAUER, Josefina"],
-    ["A010", "GONZALEZ BERNALDO DE QUIROS MIORI, Pedro"], ["A011", "IGARZABAL, Franco Josue"]
-  ],
-  EP2B: [
-    ["B001", "AGRES, Felipe Andres"], ["B002", "AGUIRRE, Manuel"], ["B003", "BUCK, Valentin"],
-    ["B004", "D' AMICO, Beltran"], ["B005", "DIETRICH, Vera"], ["B006", "FARONI, Catalina"],
-    ["B007", "GALLENTI, Ella"], ["B008", "GOMEZ, Helena"], ["B009", "HOFFMANN, Chloe"],
-    ["B010", "LEONHARDT, Adela"], ["B011", "MEINEL VON TANNENBERG, Benjamin"]
-  ],
-  EP2C: [
-    ["C001", "Alford, Igor Daniel"], ["C002", "Almiron Schroeder, Pedro"], ["C003", "Andino Diaz, Fausto Francisco"],
-    ["C004", "Balestrini, Lara"], ["C005", "Caffo, Joaquin"], ["C006", "Canuti Schimpf, Mirko Gabriel"],
-    ["C007", "Destefano, Pedro"], ["C008", "Engstfeld, Apolo"], ["C009", "Estevez Rocca, Camila Ines"],
-    ["C010", "Furnari, Julia"], ["C011", "Gimenez Casco, Delfina"]
-  ]
-};
+const demoMapas = [
+  ["MAP-EP2-MAT-DIAG", "MAT", "Matematica", "EVA-001", "Diagnostico de numeracion", "EP2A", "2026", "C01", "Representacion de numeros", "1", "0.5", "1", "TRUE"],
+  ["MAP-EP2-MAT-DIAG", "MAT", "Matematica", "EVA-001", "Diagnostico de numeracion", "EP2A", "2026", "C02", "Orden de la serie numerica", "2", "0.5", "2", "TRUE"],
+  ["MAP-EP2-MAT-DIAG", "MAT", "Matematica", "EVA-001", "Diagnostico de numeracion", "EP2A", "2026", "C03", "Recta numerica", "3", "0.5", "3", "TRUE"],
+  ["MAP-EP2-MAT-DIAG", "MAT", "Matematica", "EVA-001", "Diagnostico de numeracion", "EP2A", "2026", "C04", "Anterior y posterior", "2", "0.5", "4", "TRUE"],
+  ["MAP-EP2-MAT-DIAG", "MAT", "Matematica", "EVA-001", "Diagnostico de numeracion", "EP2A", "2026", "C05", "Sumas", "1.5", "0.5", "5", "TRUE"],
+  ["MAP-EP2-MAT-DIAG", "MAT", "Matematica", "EVA-001", "Diagnostico de numeracion", "EP2A", "2026", "C06", "Restas", "1.5", "0.5", "6", "TRUE"],
+  ["MAP-EP2-MAT-DIAG", "MAT", "Matematica", "EVA-001", "Diagnostico de numeracion", "EP2A", "2026", "C07", "Doble y mitad", "2", "0.5", "7", "TRUE"],
+  ["MAP-EP2-MAT-DIAG", "MAT", "Matematica", "EVA-001", "Diagnostico de numeracion", "EP2A", "2026", "C08", "Uso del dinero", "2", "0.5", "8", "TRUE"],
+  ["MAP-EP2-MAT-DIAG", "MAT", "Matematica", "EVA-001", "Diagnostico de numeracion", "EP2B", "2026", "C01", "Representacion de numeros", "1", "0.5", "1", "TRUE"],
+  ["MAP-EP2-MAT-DIAG", "MAT", "Matematica", "EVA-001", "Diagnostico de numeracion", "EP2B", "2026", "C02", "Orden de la serie numerica", "2", "0.5", "2", "TRUE"]
+].map(([MapaID, MateriaID, MateriaNombre, EvaluacionID, EvaluacionNombre, Curso, AnioLectivo, ConsignaID, ConsignaContenido, ConsignaPuntajeMax, ConsignaIncremento, ConsignaOrden, ConsignaActiva]) => ({
+  MapaID, MateriaID, MateriaNombre, EvaluacionID, EvaluacionNombre, Curso, AnioLectivo, ConsignaID, ConsignaContenido, ConsignaPuntajeMax, ConsignaIncremento, ConsignaOrden, ConsignaActiva
+}));
 
+let alumnos = [];
+let mapas = [];
+let consignas = [];
 let state = {};
 
 const table = document.getElementById("gradeTable");
@@ -41,6 +38,91 @@ const showIncomplete = document.getElementById("showIncomplete");
 const criteriaModal = document.getElementById("criteriaModal");
 const criteriaList = document.getElementById("criteriaList");
 const tableWrap = document.querySelector(".table-wrap");
+const saveStatus = document.getElementById("saveStatus");
+
+function normalizeText(value) {
+  return String(value ?? "").trim();
+}
+
+function normalizeHeader(value) {
+  return normalizeText(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, "")
+    .toLowerCase();
+}
+
+function parseCSV(text) {
+  const rows = [];
+  let row = [];
+  let value = "";
+  let quoted = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    const next = text[index + 1];
+
+    if (char === '"' && quoted && next === '"') {
+      value += '"';
+      index += 1;
+    } else if (char === '"') {
+      quoted = !quoted;
+    } else if (char === "," && !quoted) {
+      row.push(value);
+      value = "";
+    } else if ((char === "\n" || char === "\r") && !quoted) {
+      if (char === "\r" && next === "\n") index += 1;
+      row.push(value);
+      if (row.some(cell => normalizeText(cell))) rows.push(row);
+      row = [];
+      value = "";
+    } else {
+      value += char;
+    }
+  }
+
+  row.push(value);
+  if (row.some(cell => normalizeText(cell))) rows.push(row);
+
+  const headers = rows.shift()?.map(normalizeHeader) ?? [];
+  return rows.map(values => {
+    const item = {};
+    headers.forEach((header, index) => {
+      item[header] = normalizeText(values[index]);
+    });
+    return item;
+  });
+}
+
+function unique(values) {
+  return [...new Set(values.filter(Boolean))];
+}
+
+function selectedContext() {
+  return {
+    curso: courseFilter.value,
+    materia: subjectFilter.value,
+    evaluacion: evaluationFilter.value
+  };
+}
+
+function rowAppliesToCourse(row, curso) {
+  return !row.Curso || row.Curso === "*" || row.Curso === curso;
+}
+
+function currentEvaluationId() {
+  const { curso, materia, evaluacion } = selectedContext();
+  return mapas.find(row =>
+    rowAppliesToCourse(row, curso) &&
+    row.MateriaNombre === materia &&
+    row.EvaluacionNombre === evaluacion
+  )?.EvaluacionID || evaluacion;
+}
+
+function stateKey() {
+  const { curso, materia, evaluacion } = selectedContext();
+  return `${curso}||${materia}||${evaluacion}`;
+}
 
 function activeConsignas() {
   return consignas.filter(c => c.active);
@@ -48,6 +130,34 @@ function activeConsignas() {
 
 function totalMaximo() {
   return activeConsignas().reduce((sum, item) => sum + item.max, 0);
+}
+
+function mapRowToConsigna(row, index) {
+  return {
+    id: Number(row.consignaorden) || index + 1,
+    scoreKey: normalizeText(row.consignaid) || `C${index + 1}`,
+    consignaId: normalizeText(row.consignaid) || `C${index + 1}`,
+    titulo: normalizeText(row.consignacontenido) || `Consigna ${index + 1}`,
+    max: Number(String(row.consignapuntajemax).replace(",", ".")) || 1,
+    step: Number(String(row.consignaincremento).replace(",", ".")) || 0.5,
+    active: !["false", "0", "no", "n"].includes(normalizeText(row.consignaactiva).toLowerCase())
+  };
+}
+
+function syncConsignasFromSelection() {
+  const { curso, materia, evaluacion } = selectedContext();
+  const rows = mapas
+    .filter(row => rowAppliesToCourse(row, curso) && row.MateriaNombre === materia && row.EvaluacionNombre === evaluacion)
+    .sort((a, b) => Number(a.ConsignaOrden) - Number(b.ConsignaOrden));
+
+  consignas = rows.map((row, index) => mapRowToConsigna({
+    consignaorden: row.ConsignaOrden,
+    consignaid: row.ConsignaID,
+    consignacontenido: row.ConsignaContenido,
+    consignapuntajemax: row.ConsignaPuntajeMax,
+    consignaincremento: row.ConsignaIncremento,
+    consignaactiva: row.ConsignaActiva
+  }, index));
 }
 
 function validCriteriaConfig() {
@@ -62,34 +172,72 @@ function validCriteriaConfig() {
   );
 }
 
-function ensureCourseState(course) {
-  if (state[course]) return;
-  state[course] = alumnosPorCurso[course].map(([id, nombre], index) => ({
-    id,
-    nombre,
-    scores: consignas.map((c, scoreIndex) => {
-      if (index === 7 && course === "EP2A") return "";
-      const base = c.max - ((index + scoreIndex) % 5 === 0 ? c.step : 0);
-      return Math.max(0, base);
-    }),
-    material: index === 5 ? "Si" : "No",
-    pudoResolver: index === 7 && course === "EP2A" ? "No" : "Si",
-    observacion: index === 5 ? "Evaluacion con adecuacion" : ""
-  }));
+function alumnoNombre(alumno) {
+  return `${alumno.Apellido}, ${alumno.Nombres}`.replace(/^,\s*/, "").trim();
+}
+
+function alumnosDelCurso() {
+  return alumnos.filter(alumno => alumno.Curso === courseFilter.value);
+}
+
+function ensureGridState() {
+  const key = stateKey();
+  if (state[key]) return;
+
+  state[key] = alumnosDelCurso().map((alumno, index) => {
+    const scores = {};
+    consignas.forEach((consigna, scoreIndex) => {
+      const base = consigna.max - ((index + scoreIndex) % 5 === 0 ? consigna.step : 0);
+      scores[consigna.scoreKey] = Math.max(0, base);
+    });
+    return {
+      id: alumno.DNI,
+      dni: alumno.DNI,
+      nombre: alumnoNombre(alumno),
+      email: alumno.eMail,
+      scores,
+      material: "No",
+      pudoResolver: "Si",
+      observacion: ""
+    };
+  });
+}
+
+function populateSelect(select, values, selectedValue) {
+  select.innerHTML = values.map(value => `<option value="${value}">${value}</option>`).join("");
+  if (selectedValue && values.includes(selectedValue)) select.value = selectedValue;
+}
+
+function refreshFilters({ keepSelection = true } = {}) {
+  const previous = selectedContext();
+  const cursos = unique(alumnos.map(alumno => alumno.Curso));
+  populateSelect(courseFilter, cursos, keepSelection ? previous.curso : "");
+
+  const materias = unique(mapas
+    .filter(row => rowAppliesToCourse(row, courseFilter.value))
+    .map(row => row.MateriaNombre));
+  populateSelect(subjectFilter, materias, keepSelection ? previous.materia : "");
+
+  const evaluaciones = unique(mapas
+    .filter(row => rowAppliesToCourse(row, courseFilter.value) && row.MateriaNombre === subjectFilter.value)
+    .map(row => row.EvaluacionNombre));
+  populateSelect(evaluationFilter, evaluaciones, keepSelection ? previous.evaluacion : "");
+
+  syncConsignasFromSelection();
 }
 
 function renderHeader() {
   const thead = table.querySelector("thead");
   const visible = activeConsignas();
   const maxRow = visible.map(c => `<th>${c.max}</th>`).join("");
-  const titleRow = visible.map(c => `<th>${c.id}</th>`).join("");
+  const titleRow = visible.map(c => `<th title="${c.titulo}">${c.id}</th>`).join("");
   thead.innerHTML = `
     <tr>
       <th class="sticky-col" rowspan="2">Nr.</th>
       <th class="student-col" rowspan="2">Alumno</th>
       ${titleRow}
       <th rowspan="2">Puntaje</th>
-      <th rowspan="2">Calificación</th>
+      <th rowspan="2">Calificacion</th>
       <th rowspan="2">Material</th>
       <th rowspan="2">Resolvio</th>
       <th rowspan="2">Observaciones</th>
@@ -118,19 +266,20 @@ function studentTotals(alumno) {
     return value !== "" && scoreIsValid(value, consigna);
   });
   const puntaje = scores.reduce((sum, value) => sum + value, 0);
-  const porcentaje = Math.round((puntaje / totalMaximo()) * 1000) / 10;
+  const maximo = totalMaximo();
+  const porcentaje = maximo ? Math.round((puntaje / maximo) * 1000) / 10 : 0;
   return { puntaje, porcentaje, completo, alertas };
 }
 
 function renderBody() {
-  const course = courseFilter.value;
-  ensureCourseState(course);
+  ensureGridState();
+  const key = stateKey();
   const query = searchInput.value.trim().toLowerCase();
   const tbody = table.querySelector("tbody");
   const onlyIncomplete = showIncomplete.checked;
   tbody.innerHTML = "";
 
-  state[course].forEach((alumno, index) => {
+  state[key].forEach((alumno, index) => {
     const totals = studentTotals(alumno);
     if (query && !alumno.nombre.toLowerCase().includes(query)) return;
     if (onlyIncomplete && totals.completo) return;
@@ -141,11 +290,10 @@ function renderBody() {
       <td class="sticky-col row-number">${index + 1}</td>
       <td class="student-col student-name">${alumno.nombre}</td>
       ${activeConsignas().map((c) => {
-        const scoreIndex = c.scoreKey;
-        const value = alumno.scores[scoreIndex] ?? "";
+        const value = alumno.scores[c.scoreKey] ?? "";
         const invalid = !scoreIsValid(value, c);
         return `<td class="score-cell ${invalid ? "invalid" : ""}">
-          <input type="number" min="0" max="${c.max}" step="${c.step}" value="${value}" data-id="${alumno.id}" data-score="${scoreIndex}" title="${c.titulo}">
+          <input type="number" min="0" max="${c.max}" step="${c.step}" value="${value}" data-id="${alumno.id}" data-score="${c.scoreKey}" title="${c.titulo}">
         </td>`;
       }).join("")}
       <td class="calculated">${totals.puntaje.toFixed(1)}</td>
@@ -160,17 +308,17 @@ function renderBody() {
 }
 
 function updateSummary() {
-  const alumnos = state[courseFilter.value] || [];
-  const totals = alumnos.map(studentTotals);
+  const rows = state[stateKey()] || [];
+  const totals = rows.map(studentTotals);
   const completos = totals.filter(t => t.completo).length;
   const alertas = totals.reduce((sum, t) => sum + t.alertas, 0);
   const promedio = totals.length ? totals.reduce((sum, t) => sum + t.porcentaje, 0) / totals.length : 0;
-  document.getElementById("studentCount").textContent = alumnos.length;
+  document.getElementById("studentCount").textContent = rows.length;
   document.getElementById("completeCount").textContent = completos;
   document.getElementById("averageScore").textContent = `${promedio.toFixed(1)}%`;
   document.getElementById("alertCount").textContent = alertas;
-  document.getElementById("gridTitle").textContent = courseFilter.options[courseFilter.selectedIndex].text;
-  document.getElementById("gridSubtitle").textContent = `${subjectFilter.value} · ${evaluationFilter.value}`;
+  document.getElementById("gridTitle").textContent = courseFilter.value || "Sin curso";
+  document.getElementById("gridSubtitle").textContent = `${subjectFilter.value || "Sin materia"} - ${evaluationFilter.value || "Sin evaluacion"}`;
 }
 
 function renderCriteriaEditor() {
@@ -203,12 +351,14 @@ function renderCriteriaEditor() {
 function normalizeConsignas() {
   consignas = consignas.sort((a, b) => a.id - b.id);
   Object.values(state).flat().forEach(alumno => {
-    while (alumno.scores.length < consignas.length) alumno.scores.push("");
+    consignas.forEach(consigna => {
+      if (!(consigna.scoreKey in alumno.scores)) alumno.scores[consigna.scoreKey] = "";
+    });
   });
 }
 
 function findStudent(id) {
-  return state[courseFilter.value].find(alumno => alumno.id === id);
+  return state[stateKey()].find(alumno => alumno.id === id);
 }
 
 function editableControls() {
@@ -239,6 +389,98 @@ function focusGridControl(control) {
   control.scrollIntoView({ block: "nearest", inline: "nearest" });
 }
 
+function applyImportedAlumnos(rows) {
+  const mapped = rows.map(row => ({
+    Nombres: row.nombres,
+    Apellido: row.apellido,
+    DNI: row.dni,
+    Curso: row.curso || "*",
+    eMail: row.email || row.emailalumno || row["e-mail"] || ""
+  })).filter(row => row.DNI && row.Curso);
+
+  const dnis = mapped.map(row => row.DNI);
+  const duplicates = dnis.filter((dni, index) => dnis.indexOf(dni) !== index);
+  if (duplicates.length) {
+    alert(`Hay DNI duplicados: ${unique(duplicates).join(", ")}`);
+    return;
+  }
+
+  alumnos = mapped;
+  state = {};
+  refreshFilters({ keepSelection: false });
+  renderHeader();
+  renderBody();
+  saveStatus.textContent = `Alumnos importados: ${alumnos.length}`;
+}
+
+function applyImportedMapas(rows) {
+  mapas = rows.map(row => ({
+    MapaID: row.mapaid,
+    MateriaID: row.materiaid || row.idmateria,
+    MateriaNombre: row.materianombre || row.materia || row.idmateria,
+    EvaluacionID: row.evaluacionid || row.evaluacion,
+    EvaluacionNombre: row.evaluacionnombre || row.evaluacion,
+    Curso: row.curso,
+    AnioLectivo: row.aniolectivo || row.anolectivo || "",
+    ConsignaID: row.consignaid || `${row.evaluacion || "EVA"}-${row.consignaorden}`,
+    ConsignaContenido: row.consignacontenido,
+    ConsignaPuntajeMax: row.consignapuntajemax,
+    ConsignaIncremento: row.consignaincremento,
+    ConsignaOrden: row.consignaorden,
+    ConsignaActiva: row.consignaactiva || "TRUE"
+  })).filter(row => row.MateriaNombre && row.EvaluacionNombre && row.ConsignaContenido);
+
+  state = {};
+  refreshFilters({ keepSelection: false });
+  renderHeader();
+  renderBody();
+  saveStatus.textContent = `Mapas importados: ${mapas.length} consignas`;
+}
+
+function readCSVFile(file, callback) {
+  const reader = new FileReader();
+  reader.onload = () => callback(parseCSV(String(reader.result)));
+  reader.readAsText(file, "utf-8");
+}
+
+function exportCargas() {
+  const { curso, materia, evaluacion } = selectedContext();
+  const evaluacionId = currentEvaluationId();
+  const rows = state[stateKey()] || [];
+  const headers = ["CargaID", "EvaluacionID", "ConsignaID", "DNI", "Curso", "DocenteEmail", "Puntaje", "UsoMaterial", "PudoResolver", "Observacion", "EstadoCarga", "FechaGuardado", "FechaCierre"];
+  const fecha = new Date().toISOString();
+  const data = [];
+
+  rows.forEach(alumno => {
+    activeConsignas().forEach(consigna => {
+      data.push([
+        `${evaluacion}-${alumno.dni}-${consigna.consignaId}`,
+        evaluacionId,
+        consigna.consignaId,
+        alumno.dni,
+        curso,
+        "",
+        alumno.scores[consigna.scoreKey] ?? "",
+        alumno.material,
+        alumno.pudoResolver,
+        alumno.observacion,
+        "borrador",
+        fecha,
+        ""
+      ]);
+    });
+  });
+
+  const csv = [headers, ...data].map(row => row.map(value => `"${String(value).replaceAll('"', '""')}"`).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `cargas_${curso}_${materia}_${evaluacion}.csv`.replace(/\s+/g, "_");
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 table.addEventListener("keydown", event => {
   if (event.key !== "Tab") return;
 
@@ -248,8 +490,7 @@ table.addEventListener("keydown", event => {
 
   event.preventDefault();
   const direction = event.shiftKey ? -1 : 1;
-  const nextIndex = currentIndex + direction;
-  const nextControl = controls[nextIndex];
+  const nextControl = controls[currentIndex + direction];
 
   if (nextControl) focusGridControl(nextControl);
 });
@@ -260,15 +501,15 @@ table.addEventListener("input", event => {
   if (!id) return;
   const alumno = findStudent(id);
   if (target.dataset.score !== undefined) {
-    const scoreIndex = Number(target.dataset.score);
-    alumno.scores[scoreIndex] = target.value === "" ? "" : Number(target.value);
-    document.getElementById("saveStatus").textContent = "Cambios sin guardar";
+    const scoreKey = target.dataset.score;
+    alumno.scores[scoreKey] = target.value === "" ? "" : Number(target.value);
+    saveStatus.textContent = "Cambios sin guardar";
     renderBody();
-    const next = table.querySelector(`[data-id="${id}"][data-score="${scoreIndex}"]`);
+    const next = table.querySelector(`[data-id="${id}"][data-score="${scoreKey}"]`);
     if (next) focusGridControl(next);
   } else if (target.dataset.field) {
     alumno[target.dataset.field] = target.value;
-    document.getElementById("saveStatus").textContent = "Cambios sin guardar";
+    saveStatus.textContent = "Cambios sin guardar";
   }
 });
 
@@ -277,46 +518,57 @@ table.addEventListener("change", event => {
   const id = target.dataset.id;
   if (!id || !target.dataset.field) return;
   findStudent(id)[target.dataset.field] = target.value;
-  document.getElementById("saveStatus").textContent = "Cambios sin guardar";
+  saveStatus.textContent = "Cambios sin guardar";
   renderBody();
 });
 
-[courseFilter, subjectFilter, evaluationFilter, searchInput, showIncomplete].forEach(control => {
-  control.addEventListener("input", () => {
-    ensureCourseState(courseFilter.value);
-    renderBody();
-  });
+courseFilter.addEventListener("input", () => {
+  refreshFilters();
+  renderHeader();
+  renderBody();
+});
+
+subjectFilter.addEventListener("input", () => {
+  refreshFilters();
+  renderHeader();
+  renderBody();
+});
+
+evaluationFilter.addEventListener("input", () => {
+  syncConsignasFromSelection();
+  renderHeader();
+  renderBody();
+});
+
+[searchInput, showIncomplete].forEach(control => {
+  control.addEventListener("input", renderBody);
 });
 
 document.getElementById("saveBtn").addEventListener("click", () => {
   const now = new Date().toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
-  document.getElementById("saveStatus").textContent = `Guardado ${now}`;
+  saveStatus.textContent = `Borrador preparado ${now}`;
 });
 
-document.getElementById("exportBtn").addEventListener("click", () => {
-  const course = courseFilter.value;
-  const visible = activeConsignas();
-  const headers = ["evaluacion", "curso", "alumno_id", "alumno", ...visible.map(c => `consigna_${c.id}`), "puntaje", "calificacion", "material", "pudo_resolver", "observacion"];
-  const rows = state[course].map(alumno => {
-    const totals = studentTotals(alumno);
-    return [evaluationFilter.value, course, alumno.id, alumno.nombre, ...visible.map(c => alumno.scores[c.scoreKey] ?? ""), totals.puntaje.toFixed(1), totals.porcentaje.toFixed(1), alumno.material, alumno.pudoResolver, alumno.observacion];
-  });
-  const csv = [headers, ...rows].map(row => row.map(value => `"${String(value).replaceAll('"', '""')}"`).join(",")).join("\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `resultados_${course}.csv`;
-  link.click();
-  URL.revokeObjectURL(url);
-});
+document.getElementById("exportBtn").addEventListener("click", exportCargas);
 
 document.getElementById("loadMasterBtn").addEventListener("click", () => {
   document.getElementById("masterFile").click();
 });
 
-document.getElementById("masterFile").addEventListener("change", () => {
-  document.getElementById("saveStatus").textContent = "Maestro listo para importar";
+document.getElementById("loadMapsBtn").addEventListener("click", () => {
+  document.getElementById("mapsFile").click();
+});
+
+document.getElementById("masterFile").addEventListener("change", event => {
+  const file = event.target.files?.[0];
+  if (file) readCSVFile(file, applyImportedAlumnos);
+  event.target.value = "";
+});
+
+document.getElementById("mapsFile").addEventListener("change", event => {
+  const file = event.target.files?.[0];
+  if (file) readCSVFile(file, applyImportedMapas);
+  event.target.value = "";
 });
 
 document.getElementById("criteriaBtn").addEventListener("click", () => {
@@ -350,8 +602,15 @@ criteriaList.addEventListener("change", event => {
 });
 
 document.getElementById("addCriteriaBtn").addEventListener("click", () => {
-  const nextKey = Math.max(...consignas.map(c => c.scoreKey)) + 1;
-  consignas.push({ id: consignas.length + 1, scoreKey: nextKey, titulo: "Nueva consigna", max: 1, step: 0.5, active: true });
+  consignas.push({
+    id: consignas.length + 1,
+    scoreKey: `NEW-${Date.now()}`,
+    consignaId: `NEW-${Date.now()}`,
+    titulo: "Nueva consigna",
+    max: 1,
+    step: 0.5,
+    active: true
+  });
   normalizeConsignas();
   renderCriteriaEditor();
 });
@@ -369,9 +628,11 @@ document.getElementById("applyCriteriaBtn").addEventListener("click", () => {
   renderHeader();
   renderBody();
   criteriaModal.hidden = true;
-  document.getElementById("saveStatus").textContent = "Configuracion actualizada";
+  saveStatus.textContent = "Configuracion actualizada";
 });
 
+alumnos = demoAlumnos;
+mapas = demoMapas;
+refreshFilters({ keepSelection: false });
 renderHeader();
-ensureCourseState(courseFilter.value);
 renderBody();
