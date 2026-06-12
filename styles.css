@@ -351,6 +351,10 @@ td select:focus {
   box-shadow: 0 18px 60px rgba(0, 0, 0, .22);
 }
 
+.modal-small {
+  width: min(720px, 100%);
+}
+
 .modal-header,
 .modal-footer {
   display: flex;
@@ -376,6 +380,23 @@ td select:focus {
 .modal p {
   margin: 3px 0 0;
   color: var(--muted);
+}
+
+.connection-body {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+}
+
+.connection-body input {
+  width: 100%;
+}
+
+.connection-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .icon-btn {

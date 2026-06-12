@@ -49,6 +49,7 @@
         <input id="searchInput" type="search" placeholder="Apellido o nombre">
       </label>
       <div class="actions">
+        <button id="connectionBtn" type="button">Conectar Sheets</button>
         <button id="loadMasterBtn" type="button">Importar alumnos</button>
         <button id="loadMapsBtn" type="button">Importar mapas</button>
         <button id="loadLoadsBtn" type="button">Importar cargas</button>
@@ -101,6 +102,27 @@
   <input id="masterFile" type="file" accept=".csv" hidden>
   <input id="mapsFile" type="file" accept=".csv" hidden>
   <input id="loadsFile" type="file" accept=".csv" hidden>
+  <div class="modal-backdrop" id="connectionModal" hidden>
+    <section class="modal modal-small" role="dialog" aria-modal="true" aria-labelledby="connectionTitle">
+      <header class="modal-header">
+        <div>
+          <h2 id="connectionTitle">Conectar Google Sheets</h2>
+          <p>Pega la URL del Web App de Apps Script para sincronizar datos reales.</p>
+        </div>
+        <button id="closeConnectionBtn" type="button" class="icon-btn" aria-label="Cerrar">x</button>
+      </header>
+      <div class="connection-body">
+        <label>
+          URL Apps Script
+          <input id="scriptUrlInput" type="url" placeholder="https://script.google.com/macros/s/.../exec">
+        </label>
+        <div class="connection-actions">
+          <button id="syncSheetsBtn" type="button">Sincronizar maestros</button>
+          <button id="saveConnectionBtn" type="button" class="primary">Guardar conexión</button>
+        </div>
+      </div>
+    </section>
+  </div>
   <div class="modal-backdrop" id="criteriaModal" hidden>
     <section class="modal" role="dialog" aria-modal="true" aria-labelledby="criteriaTitle">
       <header class="modal-header">

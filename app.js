@@ -29,6 +29,7 @@ let mapas = [];
 let consignas = [];
 let state = {};
 const storagePrefix = "goethe-mapa-aprendizajes";
+const scriptUrlStorageKey = `${storagePrefix}||apps-script-url`;
 
 const table = document.getElementById("gradeTable");
 const courseFilter = document.getElementById("courseFilter");
@@ -38,8 +39,12 @@ const searchInput = document.getElementById("searchInput");
 const showIncomplete = document.getElementById("showIncomplete");
 const criteriaModal = document.getElementById("criteriaModal");
 const criteriaList = document.getElementById("criteriaList");
+const connectionModal = document.getElementById("connectionModal");
+const scriptUrlInput = document.getElementById("scriptUrlInput");
 const tableWrap = document.querySelector(".table-wrap");
 const saveStatus = document.getElementById("saveStatus");
+
+scriptUrlInput.value = localStorage.getItem(scriptUrlStorageKey) || "";
 
 function normalizeText(value) {
   return String(value ?? "").trim();
@@ -679,6 +684,72 @@ function readCSVFile(file, callback) {
   reader.readAsText(file, "utf-8");
 }
 
+function scriptUrl() {
+  return normalizeText(scriptUrlInput.value || localStorage.getItem(scriptUrlStorageKey));
+}
+
+function requireScriptUrl() {
+  const url = scriptUrl();
+  if (!url) {
+    alert("Primero pega y guarda la URL de Apps Script.");
+    connectionModal.hidden = false;
+    return "";
+  }
+  return url;
+}
+
+async function sheetsGet(action) {
+  const url = requireScriptUrl();
+  if (!url) return null;
+  const response = await fetch(`${url}?action=${encodeURIComponent(action)}&t=${Date.now()}`);
+  if (!response.ok) throw new Error(`Error ${response.status}`);
+  const payload = await response.json();
+  if (!payload.ok) throw new Error(payload.error || "Respuesta invalida");
+  return payload.data;
+}
+
+async function sheetsPost(action, data) {
+  const url = requireScriptUrl();
+  if (!url) return null;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({ action, data })
+  });
+  if (!response.ok) throw new Error(`Error ${response.status}`);
+  const payload = await response.json();
+  if (!payload.ok) throw new Error(payload.error || "Respuesta invalida");
+  return payload.data;
+}
+
+function normalizeSheetRows(rows) {
+  return (rows || []).map(row => {
+    const normalized = {};
+    Object.entries(row).forEach(([key, value]) => {
+      normalized[normalizeHeader(key)] = normalizeText(value);
+    });
+    return normalized;
+  });
+}
+
+async function syncFromSheets() {
+  saveStatus.textContent = "Sincronizando Sheets...";
+  try {
+    const [remoteAlumnos, remoteMapas, remoteCargas] = await Promise.all([
+      sheetsGet("alumnos"),
+      sheetsGet("mapas"),
+      sheetsGet("cargas")
+    ]);
+    applyImportedAlumnos(normalizeSheetRows(remoteAlumnos));
+    applyImportedMapas(normalizeSheetRows(remoteMapas));
+    applyImportedCargas(normalizeSheetRows(remoteCargas));
+    saveStatus.textContent = "Sheets sincronizado";
+  } catch (error) {
+    saveStatus.textContent = "Error al sincronizar Sheets";
+    alert(`No se pudo sincronizar: ${error.message}`);
+  }
+}
+
 function exportCargas() {
   const { curso, materia, evaluacion } = selectedContext();
   const headers = ["CargaID", "EvaluacionID", "ConsignaID", "DNI", "Curso", "DocenteEmail", "Puntaje", "UsoMaterial", "PudoResolver", "Observacion", "EstadoCarga", "FechaGuardado", "FechaCierre"];
@@ -777,10 +848,42 @@ document.getElementById("saveBtn").addEventListener("click", () => {
   const now = new Date().toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
   saveLocalDraft();
   saveStatus.textContent = `Borrador guardado ${now}`;
+  if (scriptUrl()) {
+    sheetsPost("saveCargas", buildCargaRows("borrador"))
+      .then(result => {
+        saveStatus.textContent = `Borrador guardado en Sheets (${result?.rows || 0} filas)`;
+      })
+      .catch(error => {
+        saveStatus.textContent = "Borrador local guardado";
+        alert(`No se pudo guardar en Sheets: ${error.message}`);
+      });
+  }
 });
 
 document.getElementById("exportBtn").addEventListener("click", exportCargas);
 document.getElementById("exportMapsBtn").addEventListener("click", exportMapas);
+
+document.getElementById("connectionBtn").addEventListener("click", () => {
+  scriptUrlInput.value = localStorage.getItem(scriptUrlStorageKey) || "";
+  connectionModal.hidden = false;
+});
+
+document.getElementById("closeConnectionBtn").addEventListener("click", () => {
+  connectionModal.hidden = true;
+});
+
+document.getElementById("saveConnectionBtn").addEventListener("click", () => {
+  const url = normalizeText(scriptUrlInput.value);
+  if (!url.startsWith("https://script.google.com/")) {
+    alert("Pega una URL valida de Apps Script.");
+    return;
+  }
+  localStorage.setItem(scriptUrlStorageKey, url);
+  connectionModal.hidden = true;
+  saveStatus.textContent = "Conexion guardada";
+});
+
+document.getElementById("syncSheetsBtn").addEventListener("click", syncFromSheets);
 
 document.getElementById("loadMasterBtn").addEventListener("click", () => {
   document.getElementById("masterFile").click();
@@ -880,6 +983,16 @@ document.getElementById("applyCriteriaBtn").addEventListener("click", () => {
   renderBody();
   criteriaModal.hidden = true;
   saveStatus.textContent = "Mapas actualizados";
+  if (scriptUrl()) {
+    sheetsPost("saveMapas", mapas)
+      .then(result => {
+        saveStatus.textContent = `Mapas guardados en Sheets (${result?.rows || 0} filas)`;
+      })
+      .catch(error => {
+        saveStatus.textContent = "Mapas actualizados localmente";
+        alert(`No se pudo guardar Mapas en Sheets: ${error.message}`);
+      });
+  }
 });
 
 alumnos = demoAlumnos;
