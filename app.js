@@ -30,6 +30,7 @@ let consignas = [];
 let state = {};
 const storagePrefix = "goethe-mapa-aprendizajes";
 const scriptUrlStorageKey = `${storagePrefix}||apps-script-url`;
+const googleClientIdStorageKey = `${storagePrefix}||google-client-id`;
 
 const table = document.getElementById("gradeTable");
 const courseFilter = document.getElementById("courseFilter");
@@ -41,10 +42,15 @@ const criteriaModal = document.getElementById("criteriaModal");
 const criteriaList = document.getElementById("criteriaList");
 const connectionModal = document.getElementById("connectionModal");
 const scriptUrlInput = document.getElementById("scriptUrlInput");
+const googleClientIdInput = document.getElementById("googleClientIdInput");
 const tableWrap = document.querySelector(".table-wrap");
 const saveStatus = document.getElementById("saveStatus");
 
 scriptUrlInput.value = localStorage.getItem(scriptUrlStorageKey) || "";
+googleClientIdInput.value = localStorage.getItem(googleClientIdStorageKey) || "";
+
+let googleIdToken = "";
+let docenteEmail = "";
 
 function normalizeText(value) {
   return String(value ?? "").trim();
@@ -592,7 +598,7 @@ function buildCargaRows(estado = "borrador") {
         ConsignaID: consigna.consignaId,
         DNI: alumno.dni,
         Curso: curso,
-        DocenteEmail: "",
+        DocenteEmail: docenteEmail,
         Puntaje: alumno.scores[consigna.scoreKey] ?? "",
         UsoMaterial: alumno.material,
         PudoResolver: alumno.pudoResolver,
@@ -688,6 +694,25 @@ function scriptUrl() {
   return normalizeText(scriptUrlInput.value || localStorage.getItem(scriptUrlStorageKey));
 }
 
+function googleClientId() {
+  return normalizeText(googleClientIdInput.value || localStorage.getItem(googleClientIdStorageKey));
+}
+
+function decodeJwtPayload(token) {
+  try {
+    const payload = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    return JSON.parse(atob(payload));
+  } catch {
+    return {};
+  }
+}
+
+function requireGoogleLogin() {
+  if (googleIdToken) return true;
+  alert("Primero inicia sesion con Google.");
+  return false;
+}
+
 function requireScriptUrl() {
   const url = scriptUrl();
   if (!url) {
@@ -701,7 +726,8 @@ function requireScriptUrl() {
 async function sheetsGet(action) {
   const url = requireScriptUrl();
   if (!url) return null;
-  const response = await fetch(`${url}?action=${encodeURIComponent(action)}&t=${Date.now()}`);
+  if (!requireGoogleLogin()) return null;
+  const response = await fetch(`${url}?action=${encodeURIComponent(action)}&idToken=${encodeURIComponent(googleIdToken)}&t=${Date.now()}`);
   if (!response.ok) throw new Error(`Error ${response.status}`);
   const payload = await response.json();
   if (!payload.ok) throw new Error(payload.error || "Respuesta invalida");
@@ -711,15 +737,41 @@ async function sheetsGet(action) {
 async function sheetsPost(action, data) {
   const url = requireScriptUrl();
   if (!url) return null;
+  if (!requireGoogleLogin()) return null;
   const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify({ action, data })
+    body: JSON.stringify({ action, idToken: googleIdToken, data })
   });
   if (!response.ok) throw new Error(`Error ${response.status}`);
   const payload = await response.json();
   if (!payload.ok) throw new Error(payload.error || "Respuesta invalida");
   return payload.data;
+}
+
+function startGoogleLogin() {
+  const clientId = googleClientId();
+  if (!clientId) {
+    alert("Primero carga el Google Client ID en Conectar Sheets.");
+    connectionModal.hidden = false;
+    return;
+  }
+
+  if (!window.google?.accounts?.id) {
+    alert("Google Identity Services todavia no cargo. Espera unos segundos y proba de nuevo.");
+    return;
+  }
+
+  google.accounts.id.initialize({
+    client_id: clientId,
+    callback: credentialResponse => {
+      googleIdToken = credentialResponse.credential;
+      const payload = decodeJwtPayload(googleIdToken);
+      docenteEmail = payload.email || "";
+      saveStatus.textContent = docenteEmail ? `Sesion: ${docenteEmail}` : "Sesion Google iniciada";
+    }
+  });
+  google.accounts.id.prompt();
 }
 
 function normalizeSheetRows(rows) {
@@ -865,6 +917,7 @@ document.getElementById("exportMapsBtn").addEventListener("click", exportMapas);
 
 document.getElementById("connectionBtn").addEventListener("click", () => {
   scriptUrlInput.value = localStorage.getItem(scriptUrlStorageKey) || "";
+  googleClientIdInput.value = localStorage.getItem(googleClientIdStorageKey) || "";
   connectionModal.hidden = false;
 });
 
@@ -874,16 +927,23 @@ document.getElementById("closeConnectionBtn").addEventListener("click", () => {
 
 document.getElementById("saveConnectionBtn").addEventListener("click", () => {
   const url = normalizeText(scriptUrlInput.value);
+  const clientId = normalizeText(googleClientIdInput.value);
   if (!url.startsWith("https://script.google.com/")) {
     alert("Pega una URL valida de Apps Script.");
     return;
   }
+  if (!clientId.endsWith(".apps.googleusercontent.com")) {
+    alert("Pega un Google Client ID valido.");
+    return;
+  }
   localStorage.setItem(scriptUrlStorageKey, url);
+  localStorage.setItem(googleClientIdStorageKey, clientId);
   connectionModal.hidden = true;
   saveStatus.textContent = "Conexion guardada";
 });
 
 document.getElementById("syncSheetsBtn").addEventListener("click", syncFromSheets);
+document.getElementById("googleLoginBtn").addEventListener("click", startGoogleLogin);
 
 document.getElementById("loadMasterBtn").addEventListener("click", () => {
   document.getElementById("masterFile").click();

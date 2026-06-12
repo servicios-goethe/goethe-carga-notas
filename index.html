@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Goethe Schule - Mapa de Aprendizajes</title>
   <link rel="stylesheet" href="styles.css">
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
   <header class="topbar">
@@ -50,6 +51,7 @@
       </label>
       <div class="actions">
         <button id="connectionBtn" type="button">Conectar Sheets</button>
+        <button id="googleLoginBtn" type="button">Login Google</button>
         <button id="loadMasterBtn" type="button">Importar alumnos</button>
         <button id="loadMapsBtn" type="button">Importar mapas</button>
         <button id="loadLoadsBtn" type="button">Importar cargas</button>
@@ -115,6 +117,10 @@
         <label>
           URL Apps Script
           <input id="scriptUrlInput" type="url" placeholder="https://script.google.com/macros/s/.../exec">
+        </label>
+        <label>
+          Google Client ID
+          <input id="googleClientIdInput" type="text" placeholder="000000000000-xxxx.apps.googleusercontent.com">
         </label>
         <div class="connection-actions">
           <button id="syncSheetsBtn" type="button">Sincronizar maestros</button>
