@@ -45,6 +45,12 @@ const scriptUrlInput = document.getElementById("scriptUrlInput");
 const googleClientIdInput = document.getElementById("googleClientIdInput");
 const tableWrap = document.querySelector(".table-wrap");
 const saveStatus = document.getElementById("saveStatus");
+const loginGate = document.getElementById("loginGate");
+const saveModal = document.getElementById("saveModal");
+const saveModalTitle = document.getElementById("saveModalTitle");
+const saveModalMessage = document.getElementById("saveModalMessage");
+const saveModalIndicator = document.getElementById("saveModalIndicator");
+const closeSaveModalBtn = document.getElementById("closeSaveModalBtn");
 
 scriptUrlInput.value = localStorage.getItem(scriptUrlStorageKey) || "";
 googleClientIdInput.value = localStorage.getItem(googleClientIdStorageKey) || "";
@@ -253,9 +259,8 @@ function ensureGridState() {
 
   state[key] = alumnosDelCurso().map((alumno, index) => {
     const scores = {};
-    consignas.forEach((consigna, scoreIndex) => {
-      const base = consigna.max - ((index + scoreIndex) % 5 === 0 ? consigna.step : 0);
-      scores[consigna.scoreKey] = Math.max(0, base);
+    consignas.forEach((consigna) => {
+      scores[consigna.scoreKey] = 0;
     });
     return {
       id: alumno.DNI,
@@ -278,6 +283,10 @@ function populateSelect(select, values, selectedValue) {
 
 function populateCourseSelect(selectedValue) {
   const grouped = cursosPorNivel();
+  if (!Object.keys(grouped).length) {
+    courseFilter.innerHTML = "";
+    return;
+  }
   courseFilter.innerHTML = Object.entries(grouped).map(([level, courses]) => `
     <optgroup label="${escapeHTML(level)}">
       ${courses.map(course => `<option value="${escapeHTML(course)}">${escapeHTML(course)}</option>`).join("")}
@@ -630,6 +639,8 @@ function buildCargaRows(estado = "borrador") {
 
   currentRows().forEach(alumno => {
     activeConsignas().forEach(consigna => {
+      const puntaje = alumno.scores[consigna.scoreKey] ?? "";
+      if (Number(puntaje) === 0) return;
       data.push({
         CargaID: `${evaluacionId}-${alumno.dni}-${consigna.consignaId}`,
         EvaluacionID: evaluacionId,
@@ -637,7 +648,7 @@ function buildCargaRows(estado = "borrador") {
         DNI: alumno.dni,
         Curso: curso,
         DocenteEmail: docenteEmail,
-        Puntaje: alumno.scores[consigna.scoreKey] ?? "",
+        Puntaje: puntaje,
         UsoMaterial: alumno.material,
         PudoResolver: alumno.pudoResolver,
         Observacion: alumno.observacion,
@@ -740,6 +751,18 @@ function requireGoogleLogin() {
   if (googleIdToken) return true;
   alert("Primero inicia sesion con Google.");
   return false;
+}
+
+function showSaveModal(title, message, indicator = "Procesando", canClose = false) {
+  saveModalTitle.textContent = title;
+  saveModalMessage.textContent = message;
+  saveModalIndicator.textContent = indicator;
+  closeSaveModalBtn.hidden = !canClose;
+  saveModal.hidden = false;
+}
+
+function closeSaveModal() {
+  saveModal.hidden = true;
 }
 
 function requireScriptUrl() {
@@ -889,6 +912,8 @@ function startGoogleLogin() {
       const payload = decodeJwtPayload(googleIdToken);
       docenteEmail = payload.email || "";
       saveStatus.textContent = docenteEmail ? `Sesion: ${docenteEmail}` : "Sesion Google iniciada";
+      loginGate.hidden = true;
+      syncFromSheets();
     }
   });
   google.accounts.id.prompt();
@@ -1017,36 +1042,49 @@ evaluationFilter.addEventListener("input", () => {
 });
 
 document.getElementById("saveBtn").addEventListener("click", () => {
-  const now = new Date().toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
-  saveLocalDraft();
-  saveStatus.textContent = `Borrador guardado ${now}`;
-  if (scriptUrl()) {
-    const rows = buildCargaRows("borrador");
-    saveStatus.textContent = `Enviando borrador a Sheets (${rows.length} filas)...`;
-    sheetsPost("saveCargas", rows)
-      .then(result => {
-        saveStatus.textContent = `Confirmando guardado (${result?.rows || 0} filas)...`;
-        return confirmSavedCargas(rows);
-      })
-      .then(check => {
-        if (!check.missing.length) {
-          saveStatus.textContent = `Guardado confirmado (${check.confirmed}/${check.expected} filas)`;
-        } else {
-          saveStatus.textContent = `Guardado parcial (${check.confirmed}/${check.expected} filas)`;
-          alert(`Faltan ${check.missing.length} registros en Cargas. Primeros faltantes: ${check.missing.slice(0, 5).join(", ")}`);
-        }
-      })
-      .catch(error => {
-        saveStatus.textContent = "Borrador local guardado";
-        alert(`No se pudo guardar en Sheets: ${error.message}`);
-      });
+  if (!scriptUrl() || !googleIdToken) {
+    alert("Para guardar, primero inicia sesion y conecta Google Sheets.");
+    return;
   }
+  saveLocalDraft();
+  const rows = buildCargaRows("borrador");
+  if (!rows.length) {
+    showSaveModal("Sin cambios para guardar", "No hay puntajes mayores a 0 para enviar a Sheets.", "Sin registros", true);
+    return;
+  }
+  showSaveModal("Guardando borrador", `Enviando ${rows.length} registros con puntaje mayor a 0.`, "Enviando...");
+  saveStatus.textContent = `Enviando borrador a Sheets (${rows.length} filas)...`;
+  sheetsPost("saveCargas", rows)
+    .then(result => {
+      showSaveModal("Confirmando guardado", `Verificando ${result?.rows || 0} registros en la solapa Cargas.`, "Confirmando...");
+      saveStatus.textContent = `Confirmando guardado (${result?.rows || 0} filas)...`;
+      return confirmSavedCargas(rows);
+    })
+    .then(check => {
+      if (!check.missing.length) {
+        showSaveModal("Guardado confirmado", `${check.confirmed}/${check.expected} registros quedaron guardados en Sheets.`, "Listo", true);
+        saveStatus.textContent = `Guardado confirmado (${check.confirmed}/${check.expected} filas)`;
+      } else {
+        showSaveModal("Guardado parcial", `${check.confirmed}/${check.expected} registros confirmados. Faltan ${check.missing.length}.`, "Revisar", true);
+        saveStatus.textContent = `Guardado parcial (${check.confirmed}/${check.expected} filas)`;
+      }
+    })
+    .catch(error => {
+      showSaveModal("No se pudo confirmar", error.message, "Error", true);
+      saveStatus.textContent = "Error al guardar";
+    });
 });
 
 document.getElementById("exportBtn").addEventListener("click", exportCargas);
 document.getElementById("exportMapsBtn").addEventListener("click", exportMapas);
 
 document.getElementById("connectionBtn").addEventListener("click", () => {
+  scriptUrlInput.value = localStorage.getItem(scriptUrlStorageKey) || "";
+  googleClientIdInput.value = localStorage.getItem(googleClientIdStorageKey) || "";
+  connectionModal.hidden = false;
+});
+
+document.getElementById("gateConnectionBtn").addEventListener("click", () => {
   scriptUrlInput.value = localStorage.getItem(scriptUrlStorageKey) || "";
   googleClientIdInput.value = localStorage.getItem(googleClientIdStorageKey) || "";
   connectionModal.hidden = false;
@@ -1075,6 +1113,8 @@ document.getElementById("saveConnectionBtn").addEventListener("click", () => {
 
 document.getElementById("syncSheetsBtn").addEventListener("click", syncFromSheets);
 document.getElementById("googleLoginBtn").addEventListener("click", startGoogleLogin);
+document.getElementById("gateLoginBtn").addEventListener("click", startGoogleLogin);
+closeSaveModalBtn.addEventListener("click", closeSaveModal);
 
 document.getElementById("loadMasterBtn").addEventListener("click", () => {
   document.getElementById("masterFile").click();
@@ -1186,8 +1226,14 @@ document.getElementById("applyCriteriaBtn").addEventListener("click", () => {
   }
 });
 
-alumnos = demoAlumnos;
-mapas = demoMapas;
-refreshFilters({ keepSelection: false });
-renderHeader();
-renderBody();
+if (scriptUrl() && googleClientId()) {
+  alumnos = [];
+  mapas = [];
+  saveStatus.textContent = "Esperando login";
+} else {
+  alumnos = demoAlumnos;
+  mapas = demoMapas;
+  refreshFilters({ keepSelection: false });
+  renderHeader();
+  renderBody();
+}

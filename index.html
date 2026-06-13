@@ -8,6 +8,16 @@
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
+  <div class="login-gate" id="loginGate">
+    <div class="login-panel">
+      <img src="logo.jpg" alt="Goethe Schule">
+      <h1>Mapa de Aprendizajes</h1>
+      <p>Inicia sesion con tu cuenta institucional para cargar y consultar informacion.</p>
+      <button id="gateLoginBtn" type="button" class="primary">Login Google</button>
+      <button id="gateConnectionBtn" type="button">Configurar conexion</button>
+    </div>
+  </div>
+
   <header class="topbar">
     <div class="brand">
       <img src="logo.jpg" alt="Goethe Schule">
@@ -52,9 +62,9 @@
       <div class="actions">
         <button id="connectionBtn" type="button">Conectar Sheets</button>
         <button id="googleLoginBtn" type="button">Login Google</button>
-        <button id="loadMasterBtn" type="button">Importar alumnos</button>
-        <button id="loadMapsBtn" type="button">Importar mapas</button>
-        <button id="loadLoadsBtn" type="button">Importar cargas</button>
+        <button id="loadMasterBtn" class="debug-action" type="button">Importar alumnos</button>
+        <button id="loadMapsBtn" class="debug-action" type="button">Importar mapas</button>
+        <button id="loadLoadsBtn" class="debug-action" type="button">Importar cargas</button>
         <button id="exportMapsBtn" type="button">Exportar mapas</button>
         <button id="criteriaBtn" type="button">Consignas</button>
         <button id="exportBtn" type="button">Exportar resultados</button>
@@ -125,6 +135,22 @@
         <div class="connection-actions">
           <button id="syncSheetsBtn" type="button">Sincronizar maestros</button>
           <button id="saveConnectionBtn" type="button" class="primary">Guardar conexión</button>
+        </div>
+      </div>
+    </section>
+  </div>
+  <div class="modal-backdrop" id="saveModal" hidden>
+    <section class="modal modal-small" role="dialog" aria-modal="true" aria-labelledby="saveModalTitle">
+      <header class="modal-header">
+        <div>
+          <h2 id="saveModalTitle">Guardando borrador</h2>
+          <p id="saveModalMessage">Enviando registros a Google Sheets...</p>
+        </div>
+      </header>
+      <div class="connection-body">
+        <div class="saving-indicator" id="saveModalIndicator">Procesando</div>
+        <div class="connection-actions">
+          <button id="closeSaveModalBtn" type="button" class="primary" hidden>Aceptar</button>
         </div>
       </div>
     </section>
