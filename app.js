@@ -727,9 +727,7 @@ async function sheetsGet(action) {
   const url = requireScriptUrl();
   if (!url) return null;
   if (!requireGoogleLogin()) return null;
-  const response = await fetch(`${url}?action=${encodeURIComponent(action)}&idToken=${encodeURIComponent(googleIdToken)}&t=${Date.now()}`);
-  if (!response.ok) throw new Error(`Error ${response.status}`);
-  const payload = await response.json();
+  const payload = await jsonpRequest(url, { action, idToken: googleIdToken, t: Date.now() });
   if (!payload.ok) throw new Error(payload.error || "Respuesta invalida");
   return payload.data;
 }
@@ -738,15 +736,72 @@ async function sheetsPost(action, data) {
   const url = requireScriptUrl();
   if (!url) return null;
   if (!requireGoogleLogin()) return null;
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify({ action, idToken: googleIdToken, data })
+  submitToAppsScript(url, { action, idToken: googleIdToken, data });
+  return { rows: Array.isArray(data) ? data.length : 0 };
+}
+
+function jsonpRequest(baseUrl, params) {
+  return new Promise((resolve, reject) => {
+    const callbackName = `jsonp_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const script = document.createElement("script");
+    const url = new URL(baseUrl);
+
+    Object.entries({ ...params, callback: callbackName }).forEach(([key, value]) => {
+      url.searchParams.set(key, value);
+    });
+
+    const timer = window.setTimeout(() => {
+      cleanup();
+      reject(new Error("Tiempo de espera agotado al consultar Apps Script."));
+    }, 20000);
+
+    function cleanup() {
+      window.clearTimeout(timer);
+      delete window[callbackName];
+      script.remove();
+    }
+
+    window[callbackName] = payload => {
+      cleanup();
+      resolve(payload);
+    };
+
+    script.onerror = () => {
+      cleanup();
+      reject(new Error("No se pudo cargar Apps Script. Revisa la URL /exec y el despliegue."));
+    };
+
+    script.src = url.toString();
+    document.body.appendChild(script);
   });
-  if (!response.ok) throw new Error(`Error ${response.status}`);
-  const payload = await response.json();
-  if (!payload.ok) throw new Error(payload.error || "Respuesta invalida");
-  return payload.data;
+}
+
+function submitToAppsScript(url, payload) {
+  const iframeName = `gas_post_${Date.now()}`;
+  const iframe = document.createElement("iframe");
+  iframe.name = iframeName;
+  iframe.hidden = true;
+  document.body.appendChild(iframe);
+
+  const form = document.createElement("form");
+  form.method = "POST";
+  form.action = url;
+  form.target = iframeName;
+  form.hidden = true;
+
+  const input = document.createElement("input");
+  input.type = "hidden";
+  input.name = "payload";
+  input.value = JSON.stringify(payload);
+  form.appendChild(input);
+
+  document.body.appendChild(form);
+  form.submit();
+
+  window.setTimeout(() => {
+    form.remove();
+    iframe.remove();
+  }, 15000);
 }
 
 function startGoogleLogin() {
