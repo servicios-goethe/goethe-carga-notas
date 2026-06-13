@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Goethe Schule - Mapa de Aprendizajes</title>
+  <link rel="icon" type="image/png" href="favicon.png">
   <link rel="stylesheet" href="styles.css">
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
@@ -13,8 +14,8 @@
       <img src="logo.jpg" alt="Goethe Schule">
       <h1>Mapa de Aprendizajes</h1>
       <p>Inicia sesion con tu cuenta institucional para cargar y consultar informacion.</p>
-      <button id="gateLoginBtn" type="button" class="primary">Login Google</button>
-      <button id="gateConnectionBtn" type="button">Configurar conexion</button>
+      <button id="gateLoginBtn" type="button" class="primary">Continuar</button>
+      <button id="gateConnectionBtn" class="config-action" type="button">Configurar conexion</button>
     </div>
   </div>
 
@@ -60,13 +61,13 @@
         <input id="searchInput" type="search" placeholder="Apellido o nombre">
       </label>
       <div class="actions">
-        <button id="connectionBtn" type="button">Conectar Sheets</button>
-        <button id="googleLoginBtn" type="button">Login Google</button>
+        <button id="connectionBtn" class="config-action" type="button">Conectar Sheets</button>
+        <button id="googleLoginBtn" class="config-action" type="button">Login Google</button>
         <button id="loadMasterBtn" class="debug-action" type="button">Importar alumnos</button>
         <button id="loadMapsBtn" class="debug-action" type="button">Importar mapas</button>
         <button id="loadLoadsBtn" class="debug-action" type="button">Importar cargas</button>
-        <button id="exportMapsBtn" type="button">Exportar mapas</button>
-        <button id="criteriaBtn" type="button">Consignas</button>
+        <button id="exportMapsBtn" class="admin-action" type="button">Exportar mapas</button>
+        <button id="criteriaBtn" class="admin-action" type="button">Consignas</button>
         <button id="exportBtn" type="button">Exportar resultados</button>
         <button id="saveBtn" type="button" class="primary">Guardar borrador</button>
       </div>

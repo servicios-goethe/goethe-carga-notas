@@ -67,6 +67,11 @@ body {
   display: none;
 }
 
+.config-action,
+.admin-action {
+  display: none;
+}
+
 .topbar {
   display: flex;
   align-items: center;
@@ -293,6 +298,25 @@ thead th {
 
 thead tr:nth-child(2) th {
   top: 74px;
+  background: #e7f0eb;
+  color: var(--green-dark);
+  font-size: 12px;
+}
+
+thead .student-head {
+  display: grid;
+  align-content: center;
+  gap: 6px;
+  line-height: 1.15;
+}
+
+thead .student-head small {
+  color: rgba(255, 255, 255, .8);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+thead .max-label {
   background: #e7f0eb;
   color: var(--green-dark);
   font-size: 12px;

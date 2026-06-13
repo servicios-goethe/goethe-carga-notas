@@ -28,6 +28,12 @@ let alumnos = [];
 let mapas = [];
 let consignas = [];
 let state = {};
+let admins = [];
+let isAdmin = false;
+const APP_CONFIG = {
+  scriptUrl: "https://script.google.com/macros/s/AKfycbxrwC0TARz15BwQqwGVzJEqs_ZnLlBy4Q681fim94px4NlrgTVNgHMzkJw9bS3DUkUi/exec",
+  googleClientId: "225474160522-7rk742a5qubfaf0te9uqiokfr4umj7al.apps.googleusercontent.com"
+};
 const storagePrefix = "goethe-mapa-aprendizajes";
 const scriptUrlStorageKey = `${storagePrefix}||apps-script-url`;
 const googleClientIdStorageKey = `${storagePrefix}||google-client-id`;
@@ -52,8 +58,8 @@ const saveModalMessage = document.getElementById("saveModalMessage");
 const saveModalIndicator = document.getElementById("saveModalIndicator");
 const closeSaveModalBtn = document.getElementById("closeSaveModalBtn");
 
-scriptUrlInput.value = localStorage.getItem(scriptUrlStorageKey) || "";
-googleClientIdInput.value = localStorage.getItem(googleClientIdStorageKey) || "";
+scriptUrlInput.value = APP_CONFIG.scriptUrl || localStorage.getItem(scriptUrlStorageKey) || "";
+googleClientIdInput.value = APP_CONFIG.googleClientId || localStorage.getItem(googleClientIdStorageKey) || "";
 
 let googleIdToken = "";
 let docenteEmail = "";
@@ -225,11 +231,23 @@ function alumnosDelCurso() {
   return alumnos.filter(alumno => alumno.Curso === courseFilter.value);
 }
 
-function cursosDisponibles() {
-  return unique(alumnos.map(alumno => alumno.Curso)).sort((a, b) => {
+function sortCourses(courses) {
+  return courses.sort((a, b) => {
     const levelDiff = levelSortValue(nivelFromCurso(a)) - levelSortValue(nivelFromCurso(b));
     return levelDiff || naturalSorter.compare(a, b);
   });
+}
+
+function todosLosCursos() {
+  return sortCourses(unique(alumnos.map(alumno => alumno.Curso)));
+}
+
+function cursoTieneMapaVigente(curso) {
+  return mapas.some(row => rowAppliesToCourse(row, curso) && rowIsActiveByDate(row));
+}
+
+function cursosDisponibles() {
+  return sortCourses(todosLosCursos().filter(cursoTieneMapaVigente));
 }
 
 function nivelFromCurso(curso) {
@@ -241,8 +259,8 @@ function levelSortValue(level) {
   return index === -1 ? 99 : index;
 }
 
-function cursosPorNivel() {
-  const groups = cursosDisponibles().reduce((result, curso) => {
+function agruparCursosPorNivel(cursos) {
+  const groups = cursos.reduce((result, curso) => {
     const nivel = nivelFromCurso(curso) || "Sin nivel";
     result[nivel] = result[nivel] || [];
     result[nivel].push(curso);
@@ -251,6 +269,10 @@ function cursosPorNivel() {
   return Object.fromEntries(
     Object.entries(groups).sort(([a], [b]) => levelSortValue(a) - levelSortValue(b) || naturalSorter.compare(a, b))
   );
+}
+
+function cursosPorNivel() {
+  return agruparCursosPorNivel(todosLosCursos());
 }
 
 function ensureGridState() {
@@ -282,7 +304,7 @@ function populateSelect(select, values, selectedValue) {
 }
 
 function populateCourseSelect(selectedValue) {
-  const grouped = cursosPorNivel();
+  const grouped = agruparCursosPorNivel(cursosDisponibles());
   if (!Object.keys(grouped).length) {
     courseFilter.innerHTML = "";
     return;
@@ -299,6 +321,13 @@ function populateCourseSelect(selectedValue) {
 function refreshFilters({ keepSelection = true } = {}) {
   const previous = selectedContext();
   populateCourseSelect(keepSelection ? previous.curso : "");
+  if (!courseFilter.value) {
+    populateSelect(subjectFilter, [], "");
+    populateSelect(evaluationFilter, [], "");
+    consignas = [];
+    updateSummary();
+    return;
+  }
 
   const materias = unique(mapas
     .filter(row => rowAppliesToCourse(row, courseFilter.value) && rowIsActiveByDate(row))
@@ -326,7 +355,10 @@ function renderHeader() {
   thead.innerHTML = `
     <tr>
       <th class="sticky-col" rowspan="2">Nr.</th>
-      <th class="student-col" rowspan="2">Alumno</th>
+      <th class="student-col student-head">
+        <span>Alumno</span>
+        <small>Valor máximo</small>
+      </th>
       ${titleRow}
       <th rowspan="2">Puntaje</th>
       <th rowspan="2">Calificacion</th>
@@ -334,7 +366,10 @@ function renderHeader() {
       <th rowspan="2">Resolvio</th>
       <th rowspan="2">Observaciones</th>
     </tr>
-    <tr>${maxRow}</tr>
+    <tr>
+      <th class="student-col max-label">Referencia</th>
+      ${maxRow}
+    </tr>
   `;
 }
 
@@ -364,6 +399,11 @@ function studentTotals(alumno) {
 }
 
 function renderBody() {
+  if (!courseFilter.value) {
+    table.querySelector("tbody").innerHTML = "";
+    updateSummary();
+    return;
+  }
   ensureGridState();
   const key = stateKey();
   const query = searchInput.value.trim().toLowerCase();
@@ -731,11 +771,11 @@ function readCSVFile(file, callback) {
 }
 
 function scriptUrl() {
-  return normalizeText(scriptUrlInput.value || localStorage.getItem(scriptUrlStorageKey));
+  return normalizeText(APP_CONFIG.scriptUrl || scriptUrlInput.value || localStorage.getItem(scriptUrlStorageKey));
 }
 
 function googleClientId() {
-  return normalizeText(googleClientIdInput.value || localStorage.getItem(googleClientIdStorageKey));
+  return normalizeText(APP_CONFIG.googleClientId || googleClientIdInput.value || localStorage.getItem(googleClientIdStorageKey));
 }
 
 function decodeJwtPayload(token) {
@@ -751,6 +791,34 @@ function requireGoogleLogin() {
   if (googleIdToken) return true;
   alert("Primero inicia sesion con Google.");
   return false;
+}
+
+function applyImportedAdmins(rows) {
+  admins = normalizeSheetRows(rows).map(row => ({
+    Email: row.email,
+    Nombre: row.nombre,
+    Rol: row.rol || "admin",
+    Activo: row.activo || "TRUE"
+  })).filter(row => row.Email);
+  refreshAdminState();
+}
+
+function refreshAdminState() {
+  const email = docenteEmail.toLowerCase();
+  isAdmin = admins.some(admin =>
+    normalizeText(admin.Email).toLowerCase() === email &&
+    !["false", "0", "no", "n"].includes(normalizeText(admin.Activo).toLowerCase())
+  );
+  document.querySelectorAll(".admin-action").forEach(element => {
+    element.style.display = isAdmin ? "" : "none";
+  });
+}
+
+function refreshConfigVisibility() {
+  const configuredInCode = Boolean(APP_CONFIG.scriptUrl && APP_CONFIG.googleClientId);
+  document.querySelectorAll(".config-action").forEach(element => {
+    element.style.display = configuredInCode ? "none" : "";
+  });
 }
 
 function showSaveModal(title, message, indicator = "Procesando", canClose = false) {
@@ -912,6 +980,7 @@ function startGoogleLogin() {
       const payload = decodeJwtPayload(googleIdToken);
       docenteEmail = payload.email || "";
       saveStatus.textContent = docenteEmail ? `Sesion: ${docenteEmail}` : "Sesion Google iniciada";
+      refreshAdminState();
       loginGate.hidden = true;
       syncFromSheets();
     }
@@ -932,14 +1001,16 @@ function normalizeSheetRows(rows) {
 async function syncFromSheets() {
   saveStatus.textContent = "Sincronizando Sheets...";
   try {
-    const [remoteAlumnos, remoteMapas, remoteCargas] = await Promise.all([
+    const [remoteAlumnos, remoteMapas, remoteCargas, remoteAdmins] = await Promise.all([
       sheetsGet("alumnos"),
       sheetsGet("mapas"),
-      sheetsGet("cargas")
+      sheetsGet("cargas"),
+      sheetsGet("admins")
     ]);
     applyImportedAlumnos(normalizeSheetRows(remoteAlumnos));
     applyImportedMapas(normalizeSheetRows(remoteMapas));
     applyImportedCargas(normalizeSheetRows(remoteCargas));
+    applyImportedAdmins(remoteAdmins);
     saveStatus.textContent = "Sheets sincronizado";
   } catch (error) {
     saveStatus.textContent = "Error al sincronizar Sheets";
@@ -1076,7 +1147,13 @@ document.getElementById("saveBtn").addEventListener("click", () => {
 });
 
 document.getElementById("exportBtn").addEventListener("click", exportCargas);
-document.getElementById("exportMapsBtn").addEventListener("click", exportMapas);
+document.getElementById("exportMapsBtn").addEventListener("click", () => {
+  if (!isAdmin) {
+    alert("Solo administradores pueden exportar mapas.");
+    return;
+  }
+  exportMapas();
+});
 
 document.getElementById("connectionBtn").addEventListener("click", () => {
   scriptUrlInput.value = localStorage.getItem(scriptUrlStorageKey) || "";
@@ -1147,6 +1224,10 @@ document.getElementById("loadsFile").addEventListener("change", event => {
 });
 
 document.getElementById("criteriaBtn").addEventListener("click", () => {
+  if (!isAdmin) {
+    alert("Solo administradores pueden editar consignas.");
+    return;
+  }
   renderCriteriaEditor();
   criteriaModal.hidden = false;
 });
@@ -1199,6 +1280,10 @@ document.getElementById("addCriteriaBtn").addEventListener("click", () => {
 });
 
 document.getElementById("applyCriteriaBtn").addEventListener("click", () => {
+  if (!isAdmin) {
+    alert("Solo administradores pueden aplicar cambios en consignas.");
+    return;
+  }
   if (!activeConsignas().length) {
     alert("Debe quedar al menos una consigna visible.");
     return;
@@ -1225,6 +1310,9 @@ document.getElementById("applyCriteriaBtn").addEventListener("click", () => {
       });
   }
 });
+
+refreshConfigVisibility();
+refreshAdminState();
 
 if (scriptUrl() && googleClientId()) {
   alumnos = [];
