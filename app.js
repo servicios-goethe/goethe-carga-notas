@@ -110,6 +110,18 @@ function unique(values) {
   return [...new Set(values.filter(Boolean))];
 }
 
+const naturalSorter = new Intl.Collator("es", { numeric: true, sensitivity: "base" });
+const levelOrder = ["KG", "EP", "ES"];
+
+function escapeHTML(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
 function selectedContext() {
   return {
     curso: courseFilter.value,
@@ -208,20 +220,31 @@ function alumnosDelCurso() {
 }
 
 function cursosDisponibles() {
-  return unique(alumnos.map(alumno => alumno.Curso));
+  return unique(alumnos.map(alumno => alumno.Curso)).sort((a, b) => {
+    const levelDiff = levelSortValue(nivelFromCurso(a)) - levelSortValue(nivelFromCurso(b));
+    return levelDiff || naturalSorter.compare(a, b);
+  });
 }
 
 function nivelFromCurso(curso) {
   return alumnos.find(alumno => alumno.Curso === curso)?.Nivel || "";
 }
 
+function levelSortValue(level) {
+  const index = levelOrder.indexOf(level);
+  return index === -1 ? 99 : index;
+}
+
 function cursosPorNivel() {
-  return cursosDisponibles().reduce((groups, curso) => {
+  const groups = cursosDisponibles().reduce((result, curso) => {
     const nivel = nivelFromCurso(curso) || "Sin nivel";
-    groups[nivel] = groups[nivel] || [];
-    groups[nivel].push(curso);
-    return groups;
+    result[nivel] = result[nivel] || [];
+    result[nivel].push(curso);
+    return result;
   }, {});
+  return Object.fromEntries(
+    Object.entries(groups).sort(([a], [b]) => levelSortValue(a) - levelSortValue(b) || naturalSorter.compare(a, b))
+  );
 }
 
 function ensureGridState() {
@@ -249,14 +272,24 @@ function ensureGridState() {
 }
 
 function populateSelect(select, values, selectedValue) {
-  select.innerHTML = values.map(value => `<option value="${value}">${value}</option>`).join("");
+  select.innerHTML = values.map(value => `<option value="${escapeHTML(value)}">${escapeHTML(value)}</option>`).join("");
   if (selectedValue && values.includes(selectedValue)) select.value = selectedValue;
+}
+
+function populateCourseSelect(selectedValue) {
+  const grouped = cursosPorNivel();
+  courseFilter.innerHTML = Object.entries(grouped).map(([level, courses]) => `
+    <optgroup label="${escapeHTML(level)}">
+      ${courses.map(course => `<option value="${escapeHTML(course)}">${escapeHTML(course)}</option>`).join("")}
+    </optgroup>
+  `).join("");
+  const allCourses = Object.values(grouped).flat();
+  if (selectedValue && allCourses.includes(selectedValue)) courseFilter.value = selectedValue;
 }
 
 function refreshFilters({ keepSelection = true } = {}) {
   const previous = selectedContext();
-  const cursos = cursosDisponibles();
-  populateSelect(courseFilter, cursos, keepSelection ? previous.curso : "");
+  populateCourseSelect(keepSelection ? previous.curso : "");
 
   const materias = unique(mapas
     .filter(row => rowAppliesToCourse(row, courseFilter.value) && rowIsActiveByDate(row))
@@ -274,8 +307,13 @@ function refreshFilters({ keepSelection = true } = {}) {
 function renderHeader() {
   const thead = table.querySelector("thead");
   const visible = activeConsignas();
-  const maxRow = visible.map(c => `<th>${c.max}</th>`).join("");
-  const titleRow = visible.map(c => `<th title="${c.titulo}">${c.id}</th>`).join("");
+  const maxRow = visible.map(c => `<th class="criteria-max">${escapeHTML(c.max)}</th>`).join("");
+  const titleRow = visible.map(c => `
+    <th class="criteria-title" title="${escapeHTML(c.titulo)}">
+      <span class="criteria-code">${escapeHTML(c.consignaId || c.id)}</span>
+      <span class="criteria-name">${escapeHTML(c.titulo)}</span>
+    </th>
+  `).join("");
   thead.innerHTML = `
     <tr>
       <th class="sticky-col" rowspan="2">Nr.</th>

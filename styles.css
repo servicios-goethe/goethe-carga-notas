@@ -222,7 +222,7 @@ button.primary {
 
 table {
   width: 100%;
-  min-width: 1280px;
+  min-width: 1500px;
   border-collapse: separate;
   border-spacing: 0;
   font-size: 13px;
@@ -248,10 +248,38 @@ thead th {
 }
 
 thead tr:nth-child(2) th {
-  top: 34px;
+  top: 74px;
   background: #e7f0eb;
   color: var(--green-dark);
   font-size: 12px;
+}
+
+.criteria-title {
+  min-width: 130px;
+  max-width: 170px;
+  height: 74px;
+  padding: 7px 8px;
+  white-space: normal;
+}
+
+.criteria-code {
+  display: block;
+  color: rgba(255, 255, 255, .72);
+  font-size: 11px;
+  line-height: 1.1;
+}
+
+.criteria-name {
+  display: -webkit-box;
+  margin-top: 3px;
+  overflow: hidden;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  line-height: 1.15;
+}
+
+.criteria-max {
+  height: 38px;
 }
 
 .sticky-col {
