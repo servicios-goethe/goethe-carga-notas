@@ -701,16 +701,7 @@ function restoreLocalDraft(showStatus = true) {
 }
 
 function applyImportedCargas(rows) {
-  const mapped = rows.map(row => ({
-    EvaluacionID: row.evaluacionid,
-    ConsignaID: row.consignaid,
-    DNI: row.dni,
-    Curso: row.curso,
-    Puntaje: row.puntaje,
-    UsoMaterial: row.usomaterial,
-    PudoResolver: row.pudoresolver,
-    Observacion: row.observacion
-  })).filter(row => row.DNI && row.ConsignaID);
+  const mapped = normalizeCargaRows(rows).filter(row => row.DNI && row.ConsignaID);
 
   const currentEvaluation = currentEvaluationId();
   const filtered = mapped.filter(row =>
@@ -776,6 +767,42 @@ async function sheetsPost(action, data) {
   if (!requireGoogleLogin()) return null;
   submitToAppsScript(url, { action, idToken: googleIdToken, data });
   return { rows: Array.isArray(data) ? data.length : 0 };
+}
+
+function wait(ms) {
+  return new Promise(resolve => window.setTimeout(resolve, ms));
+}
+
+function normalizeCargaRows(rows) {
+  return normalizeSheetRows(rows).map(row => ({
+    CargaID: row.cargaid,
+    EvaluacionID: row.evaluacionid,
+    ConsignaID: row.consignaid,
+    DNI: row.dni,
+    Curso: row.curso,
+    DocenteEmail: row.docenteemail,
+    Puntaje: row.puntaje,
+    UsoMaterial: row.usomaterial,
+    PudoResolver: row.pudoresolver,
+    Observacion: row.observacion,
+    EstadoCarga: row.estadocarga,
+    FechaGuardado: row.fechaguardado,
+    FechaCierre: row.fechacierre
+  }));
+}
+
+async function confirmSavedCargas(expectedRows) {
+  await wait(1800);
+  const remoteRows = normalizeCargaRows(await sheetsGet("cargas"));
+  const remoteIds = new Set(remoteRows.map(row => row.CargaID).filter(Boolean));
+  const expectedIds = expectedRows.map(row => row.CargaID);
+  const missing = expectedIds.filter(id => !remoteIds.has(id));
+
+  return {
+    expected: expectedIds.length,
+    confirmed: expectedIds.length - missing.length,
+    missing
+  };
 }
 
 function jsonpRequest(baseUrl, params) {
@@ -994,9 +1021,20 @@ document.getElementById("saveBtn").addEventListener("click", () => {
   saveLocalDraft();
   saveStatus.textContent = `Borrador guardado ${now}`;
   if (scriptUrl()) {
-    sheetsPost("saveCargas", buildCargaRows("borrador"))
+    const rows = buildCargaRows("borrador");
+    saveStatus.textContent = `Enviando borrador a Sheets (${rows.length} filas)...`;
+    sheetsPost("saveCargas", rows)
       .then(result => {
-        saveStatus.textContent = `Borrador guardado en Sheets (${result?.rows || 0} filas)`;
+        saveStatus.textContent = `Confirmando guardado (${result?.rows || 0} filas)...`;
+        return confirmSavedCargas(rows);
+      })
+      .then(check => {
+        if (!check.missing.length) {
+          saveStatus.textContent = `Guardado confirmado (${check.confirmed}/${check.expected} filas)`;
+        } else {
+          saveStatus.textContent = `Guardado parcial (${check.confirmed}/${check.expected} filas)`;
+          alert(`Faltan ${check.missing.length} registros en Cargas. Primeros faltantes: ${check.missing.slice(0, 5).join(", ")}`);
+        }
       })
       .catch(error => {
         saveStatus.textContent = "Borrador local guardado";
