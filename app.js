@@ -348,6 +348,7 @@ function renderHeader() {
   const thead = table.querySelector("thead");
   const visible = activeConsignas();
   const maxRow = visible.map(c => `<th class="criteria-max">${escapeHTML(c.max)}</th>`).join("");
+  const emptySummaryRow = Array.from({ length: 5 }, () => `<th class="header-empty"></th>`).join("");
   const titleRow = visible.map(c => `
     <th class="criteria-title" title="${escapeHTML(c.titulo)}">
       <span class="criteria-code">${escapeHTML(c.consignaId || c.id)}</span>
@@ -356,18 +357,20 @@ function renderHeader() {
   `).join("");
   thead.innerHTML = `
     <tr>
-      <th class="sticky-col" rowspan="2">Nr.</th>
+      <th class="sticky-col">Nr.</th>
       <th class="student-col student-head">Alumno</th>
       ${titleRow}
-      <th rowspan="2">Puntaje</th>
-      <th rowspan="2">Calificacion</th>
-      <th rowspan="2">Material</th>
-      <th rowspan="2">Resolvio</th>
-      <th rowspan="2">Observaciones</th>
+      <th>Puntaje</th>
+      <th>Calificacion</th>
+      <th>Material</th>
+      <th>Resolvio</th>
+      <th>Observaciones</th>
     </tr>
     <tr>
+      <th class="sticky-col header-empty"></th>
       <th class="student-col max-label">Valor maximo</th>
       ${maxRow}
+      ${emptySummaryRow}
     </tr>
   `;
 }
@@ -971,7 +974,7 @@ function handleGoogleCredential(credentialResponse) {
   saveStatus.textContent = docenteEmail ? `Sesion: ${docenteEmail}` : "Sesion Google iniciada";
   refreshAdminState();
   loginGate.hidden = true;
-  syncFromSheets();
+  syncFromSheets({ showLoading: true });
 }
 
 function ensureGoogleIdentityInitialized() {
@@ -1000,7 +1003,7 @@ function ensureGoogleIdentityInitialized() {
 function startGoogleLogin() {
   if (googleIdToken) {
     loginGate.hidden = true;
-    syncFromSheets();
+    syncFromSheets({ showLoading: true });
     return;
   }
 
@@ -1024,7 +1027,10 @@ function normalizeSheetRows(rows) {
   });
 }
 
-async function syncFromSheets() {
+async function syncFromSheets({ showLoading = false } = {}) {
+  if (showLoading) {
+    showSaveModal("Cargando", "Sincronizando alumnos, mapas, cargas y permisos con Google Sheets.", "Sincronizando...");
+  }
   saveStatus.textContent = "Sincronizando Sheets...";
   try {
     const [remoteAlumnos, remoteMapas, remoteCargas] = await Promise.all([
@@ -1044,9 +1050,14 @@ async function syncFromSheets() {
       saveStatus.textContent = "Sheets sincronizado - falta publicar Admins";
     }
     if (admins.length) saveStatus.textContent = "Sheets sincronizado";
+    if (showLoading) closeSaveModal();
   } catch (error) {
     saveStatus.textContent = "Error al sincronizar Sheets";
-    alert(`No se pudo sincronizar: ${error.message}`);
+    if (showLoading) {
+      showSaveModal("No se pudo sincronizar", error.message, "Error", true);
+    } else {
+      alert(`No se pudo sincronizar: ${error.message}`);
+    }
   }
 }
 

@@ -289,7 +289,7 @@ td {
 thead th {
   position: sticky;
   top: 0;
-  z-index: 4;
+  z-index: 30;
   background: var(--green);
   color: #fff;
   text-align: center;
@@ -305,6 +305,11 @@ thead tr:nth-child(2) th {
 
 thead .max-label {
   font-size: 12px;
+}
+
+thead .header-empty {
+  height: 38px;
+  font-size: 0;
 }
 
 .criteria-title {
@@ -338,28 +343,36 @@ thead .max-label {
 .sticky-col {
   position: sticky;
   left: 0;
-  z-index: 3;
+  z-index: 2;
   background: #fff;
 }
 
 .student-col {
   position: sticky;
   left: 52px;
-  z-index: 3;
+  z-index: 2;
   background: #fff;
   min-width: 260px;
 }
 
 thead .sticky-col,
 thead .student-col {
-  z-index: 5;
+  z-index: 60;
   background: var(--green);
   color: #fff;
+  box-shadow: 0 0 0 1px var(--line);
 }
 
 thead tr:nth-child(2) .student-col {
   background: #e7f0eb;
   color: var(--green-dark);
+}
+
+thead tr:nth-child(2) .sticky-col,
+thead tr:nth-child(2) .header-empty {
+  background: #e7f0eb;
+  color: var(--green-dark);
+  box-shadow: 0 0 0 1px var(--line);
 }
 
 td.row-number {
