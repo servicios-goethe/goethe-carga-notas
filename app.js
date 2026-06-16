@@ -799,7 +799,7 @@ function requireGoogleLogin() {
 
 function applyImportedAdmins(rows) {
   admins = normalizeSheetRows(rows).map(row => ({
-    Email: row.email,
+    Email: row.email || row.mail || row.emailadmin || row.docenteemail || row.usuario,
     Nombre: row.nombre,
     Rol: row.rol || "admin",
     Activo: row.activo || "TRUE"
@@ -814,14 +814,14 @@ function refreshAdminState() {
     !["false", "0", "no", "n"].includes(normalizeText(admin.Activo).toLowerCase())
   );
   document.querySelectorAll(".admin-action").forEach(element => {
-    element.style.display = isAdmin ? "" : "none";
+    element.style.display = isAdmin ? "inline-flex" : "none";
   });
 }
 
 function refreshConfigVisibility() {
   const configuredInCode = Boolean(APP_CONFIG.scriptUrl && APP_CONFIG.googleClientId);
   document.querySelectorAll(".config-action").forEach(element => {
-    element.style.display = configuredInCode ? "none" : "";
+    element.style.display = configuredInCode ? "none" : "inline-flex";
   });
 }
 
