@@ -357,10 +357,7 @@ function renderHeader() {
   thead.innerHTML = `
     <tr>
       <th class="sticky-col" rowspan="2">Nr.</th>
-      <th class="student-col student-head">
-        <span>Alumno</span>
-        <small>Valor máximo</small>
-      </th>
+      <th class="student-col student-head">Alumno</th>
       ${titleRow}
       <th rowspan="2">Puntaje</th>
       <th rowspan="2">Calificacion</th>
@@ -369,7 +366,7 @@ function renderHeader() {
       <th rowspan="2">Observaciones</th>
     </tr>
     <tr>
-      <th class="student-col max-label">Referencia</th>
+      <th class="student-col max-label">Valor maximo</th>
       ${maxRow}
     </tr>
   `;
