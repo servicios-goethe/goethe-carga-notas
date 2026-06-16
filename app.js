@@ -63,6 +63,8 @@ googleClientIdInput.value = APP_CONFIG.googleClientId || localStorage.getItem(go
 
 let googleIdToken = "";
 let docenteEmail = "";
+let googleInitializedClientId = "";
+let googleLoginInProgress = false;
 
 function normalizeText(value) {
   return String(value ?? "").trim();
@@ -964,32 +966,55 @@ function submitToAppsScript(url, payload) {
   }, 15000);
 }
 
-function startGoogleLogin() {
+function handleGoogleCredential(credentialResponse) {
+  googleLoginInProgress = false;
+  googleIdToken = credentialResponse.credential;
+  const payload = decodeJwtPayload(googleIdToken);
+  docenteEmail = payload.email || "";
+  saveStatus.textContent = docenteEmail ? `Sesion: ${docenteEmail}` : "Sesion Google iniciada";
+  refreshAdminState();
+  loginGate.hidden = true;
+  syncFromSheets();
+}
+
+function ensureGoogleIdentityInitialized() {
   const clientId = googleClientId();
   if (!clientId) {
     alert("Primero carga el Google Client ID en Conectar Sheets.");
     connectionModal.hidden = false;
-    return;
+    return false;
   }
 
   if (!window.google?.accounts?.id) {
     alert("Google Identity Services todavia no cargo. Espera unos segundos y proba de nuevo.");
-    return;
+    return false;
   }
+
+  if (googleInitializedClientId === clientId) return true;
 
   google.accounts.id.initialize({
     client_id: clientId,
-    callback: credentialResponse => {
-      googleIdToken = credentialResponse.credential;
-      const payload = decodeJwtPayload(googleIdToken);
-      docenteEmail = payload.email || "";
-      saveStatus.textContent = docenteEmail ? `Sesion: ${docenteEmail}` : "Sesion Google iniciada";
-      refreshAdminState();
-      loginGate.hidden = true;
-      syncFromSheets();
-    }
+    callback: handleGoogleCredential
   });
+  googleInitializedClientId = clientId;
+  return true;
+}
+
+function startGoogleLogin() {
+  if (googleIdToken) {
+    loginGate.hidden = true;
+    syncFromSheets();
+    return;
+  }
+
+  if (googleLoginInProgress) return;
+  if (!ensureGoogleIdentityInitialized()) return;
+
+  googleLoginInProgress = true;
   google.accounts.id.prompt();
+  window.setTimeout(() => {
+    googleLoginInProgress = false;
+  }, 3000);
 }
 
 function normalizeSheetRows(rows) {
@@ -1019,8 +1044,9 @@ async function syncFromSheets() {
     } catch (adminError) {
       applyImportedAdmins([]);
       console.warn("No se pudo leer Admins:", adminError);
+      saveStatus.textContent = "Sheets sincronizado - falta publicar Admins";
     }
-    saveStatus.textContent = "Sheets sincronizado";
+    if (admins.length) saveStatus.textContent = "Sheets sincronizado";
   } catch (error) {
     saveStatus.textContent = "Error al sincronizar Sheets";
     alert(`No se pudo sincronizar: ${error.message}`);
