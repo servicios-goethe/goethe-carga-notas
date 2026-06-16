@@ -529,7 +529,7 @@ function upsertMapRowsFromCriteria() {
   const selectedCourses = selectedCriteriaCourses();
   if (!selectedCourses.length) {
     alert("Selecciona al menos un curso.");
-    return false;
+    return null;
   }
 
   const expiration = document.getElementById("criteriaExpiration")?.value || "";
@@ -554,9 +554,11 @@ function upsertMapRowsFromCriteria() {
     targetCourseSet.has(row.Curso)
   ));
 
+  const changedRows = [];
+
   selectedCourses.forEach(course => {
     consignas.forEach((consigna, index) => {
-      mapas.push({
+      const row = {
         MapaID: mapaId,
         MateriaID: materiaId,
         MateriaNombre: materiaNombre,
@@ -572,11 +574,13 @@ function upsertMapRowsFromCriteria() {
         ConsignaOrden: String(index + 1),
         ConsignaActiva: consigna.active ? "TRUE" : "FALSE",
         FechaCaducidad: expiration
-      });
+      };
+      mapas.push(row);
+      changedRows.push(row);
     });
   });
 
-  return true;
+  return changedRows;
 }
 
 function normalizeConsignas() {
@@ -1001,16 +1005,21 @@ function normalizeSheetRows(rows) {
 async function syncFromSheets() {
   saveStatus.textContent = "Sincronizando Sheets...";
   try {
-    const [remoteAlumnos, remoteMapas, remoteCargas, remoteAdmins] = await Promise.all([
+    const [remoteAlumnos, remoteMapas, remoteCargas] = await Promise.all([
       sheetsGet("alumnos"),
       sheetsGet("mapas"),
-      sheetsGet("cargas"),
-      sheetsGet("admins")
+      sheetsGet("cargas")
     ]);
     applyImportedAlumnos(normalizeSheetRows(remoteAlumnos));
     applyImportedMapas(normalizeSheetRows(remoteMapas));
     applyImportedCargas(normalizeSheetRows(remoteCargas));
-    applyImportedAdmins(remoteAdmins);
+    try {
+      const remoteAdmins = await sheetsGet("admins");
+      applyImportedAdmins(remoteAdmins);
+    } catch (adminError) {
+      applyImportedAdmins([]);
+      console.warn("No se pudo leer Admins:", adminError);
+    }
     saveStatus.textContent = "Sheets sincronizado";
   } catch (error) {
     saveStatus.textContent = "Error al sincronizar Sheets";
@@ -1293,16 +1302,17 @@ document.getElementById("applyCriteriaBtn").addEventListener("click", () => {
     return;
   }
   normalizeConsignas();
-  if (!upsertMapRowsFromCriteria()) return;
+  const changedMapRows = upsertMapRowsFromCriteria();
+  if (!changedMapRows) return;
   refreshFilters();
   renderHeader();
   renderBody();
   criteriaModal.hidden = true;
   saveStatus.textContent = "Mapas actualizados";
   if (scriptUrl()) {
-    sheetsPost("saveMapas", mapas)
+    sheetsPost("upsertMapas", changedMapRows)
       .then(result => {
-        saveStatus.textContent = `Mapas guardados en Sheets (${result?.rows || 0} filas)`;
+        saveStatus.textContent = `Mapas guardados en Sheets (${result?.rows || 0} filas actualizadas)`;
       })
       .catch(error => {
         saveStatus.textContent = "Mapas actualizados localmente";
