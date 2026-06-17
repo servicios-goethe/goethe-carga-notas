@@ -29,7 +29,9 @@ let mapas = [];
 let consignas = [];
 let state = {};
 let admins = [];
+let cargas = [];
 let isAdmin = false;
+let closedNoticeKey = "";
 const APP_CONFIG = {
   scriptUrl: "https://script.google.com/macros/s/AKfycbxrwC0TARz15BwQqwGVzJEqs_ZnLlBy4Q681fim94px4NlrgTVNgHMzkJw9bS3DUkUi/exec",
   googleClientId: "225474160522-7rk742a5qubfaf0te9uqiokfr4umj7al.apps.googleusercontent.com"
@@ -177,12 +179,48 @@ function storageKey() {
   return `${storagePrefix}||${stateKey()}`;
 }
 
+function currentClosedRows() {
+  const { curso } = selectedContext();
+  const evaluacionId = currentEvaluationId();
+  return cargas.filter(row =>
+    row.Curso === curso &&
+    row.EvaluacionID === evaluacionId &&
+    String(row.EstadoCarga || "").toLowerCase() === "cerrado"
+  );
+}
+
+function currentLoadIsClosed() {
+  return currentClosedRows().length > 0;
+}
+
+function notifyClosedLoadIfNeeded() {
+  const key = stateKey();
+  if (!currentLoadIsClosed() || closedNoticeKey === key) return;
+  closedNoticeKey = key;
+  showSaveModal("Carga finalizada", "Este curso ya tiene una carga finalizada para esta evaluacion. La grilla queda solo para consulta.", "Consulta", true);
+}
+
 function activeConsignas() {
   return consignas.filter(c => c.active);
 }
 
 function totalMaximo() {
   return activeConsignas().reduce((sum, item) => sum + item.max, 0);
+}
+
+function isAbsent(alumno) {
+  return alumno.estadoAlumno === "Ausente";
+}
+
+function isInclusion(alumno) {
+  return alumno.estadoAlumno === "Inclusion";
+}
+
+function normalizeEstadoAlumno(value) {
+  const normalized = normalizeHeader(value);
+  if (normalized === "ausente") return "Ausente";
+  if (normalized === "inclusion") return "Inclusion";
+  return "Presente";
 }
 
 function mapRowToConsigna(row, index) {
@@ -292,7 +330,7 @@ function ensureGridState() {
       nombre: alumnoNombre(alumno),
       email: alumno.eMail,
       scores,
-      material: "No",
+      estadoAlumno: "Presente",
       pudoResolver: "Si",
       observacion: ""
     };
@@ -360,9 +398,9 @@ function renderHeader() {
       <th class="sticky-col">Nr.</th>
       <th class="student-col student-head">Alumno</th>
       ${titleRow}
+      <th>Estado alumno</th>
       <th>Puntaje</th>
       <th>Calificacion</th>
-      <th>Material</th>
       <th>Resolvio</th>
       <th>Observaciones</th>
     </tr>
@@ -375,29 +413,35 @@ function renderHeader() {
   `;
 }
 
-function scoreIsValid(value, consigna) {
+function scoreIsValid(value, consigna, alumno = null) {
   if (value === "") return true;
   const number = Number(value);
+  if (number === 9) return Boolean(alumno && isInclusion(alumno));
   if (!Number.isFinite(number) || number < 0 || number > consigna.max) return false;
   return Math.abs(number / consigna.step - Math.round(number / consigna.step)) < 0.001;
 }
 
 function studentTotals(alumno) {
+  if (isAbsent(alumno)) {
+    return { puntaje: 0, porcentaje: 0, completo: true, alertas: 0, maximo: 0 };
+  }
+
   let alertas = 0;
+  let maximo = 0;
   const scores = activeConsignas().map((consigna) => {
     const value = alumno.scores[consigna.scoreKey] ?? "";
-    const valid = scoreIsValid(value, consigna);
+    const valid = scoreIsValid(value, consigna, alumno);
     if (!valid) alertas += 1;
+    if (Number(value) !== 9) maximo += consigna.max;
     return valid && value !== "" ? Number(value) : 0;
   });
   const completo = activeConsignas().every((consigna) => {
     const value = alumno.scores[consigna.scoreKey] ?? "";
-    return value !== "" && scoreIsValid(value, consigna);
+    return value !== "" && scoreIsValid(value, consigna, alumno);
   });
-  const puntaje = scores.reduce((sum, value) => sum + value, 0);
-  const maximo = totalMaximo();
+  const puntaje = scores.reduce((sum, value) => sum + (value === 9 ? 0 : value), 0);
   const porcentaje = maximo ? Math.round((puntaje / maximo) * 1000) / 10 : 0;
-  return { puntaje, porcentaje, completo, alertas };
+  return { puntaje, porcentaje, completo, alertas, maximo };
 }
 
 function renderBody() {
@@ -411,6 +455,7 @@ function renderBody() {
   const query = searchInput.value.trim().toLowerCase();
   const tbody = table.querySelector("tbody");
   const onlyIncomplete = showIncomplete.checked;
+  const closed = currentLoadIsClosed();
   tbody.innerHTML = "";
 
   state[key].forEach((alumno, index) => {
@@ -425,20 +470,29 @@ function renderBody() {
       <td class="student-col student-name">${alumno.nombre}</td>
       ${activeConsignas().map((c) => {
         const value = alumno.scores[c.scoreKey] ?? "";
-        const invalid = !scoreIsValid(value, c);
+        const invalid = !scoreIsValid(value, c, alumno);
+        const max = isInclusion(alumno) ? 9 : c.max;
+        const disabled = isAbsent(alumno) || closed ? " disabled" : "";
         return `<td class="score-cell ${invalid ? "invalid" : ""}">
-          <input type="number" min="0" max="${c.max}" step="${c.step}" value="${value}" data-id="${alumno.id}" data-score="${c.scoreKey}" title="${c.titulo}">
+          <input type="number" min="0" max="${max}" step="${c.step}" value="${value}" data-id="${alumno.id}" data-score="${c.scoreKey}" title="${c.titulo}"${disabled}>
         </td>`;
       }).join("")}
+      <td>
+        <select data-id="${alumno.id}" data-field="estadoAlumno"${closed ? " disabled" : ""}>
+          <option${alumno.estadoAlumno === "Presente" ? " selected" : ""}>Presente</option>
+          <option${alumno.estadoAlumno === "Ausente" ? " selected" : ""}>Ausente</option>
+          <option${alumno.estadoAlumno === "Inclusion" ? " selected" : ""}>Inclusion</option>
+        </select>
+      </td>
       <td class="calculated">${totals.puntaje.toFixed(1)}</td>
       <td class="calculated">${totals.porcentaje.toFixed(1)}%</td>
-      <td><select data-id="${alumno.id}" data-field="material"><option${alumno.material === "No" ? " selected" : ""}>No</option><option${alumno.material === "Si" ? " selected" : ""}>Si</option></select></td>
-      <td><select data-id="${alumno.id}" data-field="pudoResolver"><option${alumno.pudoResolver === "Si" ? " selected" : ""}>Si</option><option${alumno.pudoResolver === "No" ? " selected" : ""}>No</option></select></td>
-      <td class="observations"><input type="text" value="${alumno.observacion}" data-id="${alumno.id}" data-field="observacion"></td>
+      <td><select data-id="${alumno.id}" data-field="pudoResolver"${closed ? " disabled" : ""}><option${alumno.pudoResolver === "Si" ? " selected" : ""}>Si</option><option${alumno.pudoResolver === "No" ? " selected" : ""}>No</option></select></td>
+      <td class="observations"><input type="text" value="${alumno.observacion}" data-id="${alumno.id}" data-field="observacion"${closed ? " disabled" : ""}></td>
     `;
     tbody.appendChild(tr);
   });
   updateSummary();
+  notifyClosedLoadIfNeeded();
 }
 
 function updateSummary() {
@@ -452,7 +506,8 @@ function updateSummary() {
   document.getElementById("averageScore").textContent = `${promedio.toFixed(1)}%`;
   document.getElementById("alertCount").textContent = alertas;
   document.getElementById("gridTitle").textContent = courseFilter.value || "Sin curso";
-  document.getElementById("gridSubtitle").textContent = `${subjectFilter.value || "Sin materia"} - ${evaluationFilter.value || "Sin evaluacion"}`;
+  const closed = currentLoadIsClosed();
+  document.getElementById("gridSubtitle").textContent = `${subjectFilter.value || "Sin materia"} - ${evaluationFilter.value || "Sin evaluacion"}${closed ? " - carga finalizada" : ""}`;
 }
 
 function currentRows() {
@@ -681,12 +736,13 @@ function buildCargaRows(estado = "borrador") {
   const { curso, evaluacion } = selectedContext();
   const evaluacionId = currentEvaluationId();
   const fecha = new Date().toISOString();
+  const isFinal = estado === "cerrado";
   const data = [];
 
   currentRows().forEach(alumno => {
     activeConsignas().forEach(consigna => {
       const puntaje = alumno.scores[consigna.scoreKey] ?? "";
-      if (Number(puntaje) === 0) return;
+      if (!isFinal && !isAbsent(alumno) && (puntaje === "" || Number(puntaje) === 0)) return;
       data.push({
         CargaID: `${evaluacionId}-${alumno.dni}-${consigna.consignaId}`,
         EvaluacionID: evaluacionId,
@@ -694,8 +750,9 @@ function buildCargaRows(estado = "borrador") {
         DNI: alumno.dni,
         Curso: curso,
         DocenteEmail: docenteEmail,
-        Puntaje: puntaje,
-        UsoMaterial: alumno.material,
+        Puntaje: isAbsent(alumno) ? "" : puntaje,
+        EstadoAlumno: alumno.estadoAlumno || "Presente",
+        UsoMaterial: "",
         PudoResolver: alumno.pudoResolver,
         Observacion: alumno.observacion,
         EstadoCarga: estado,
@@ -706,6 +763,46 @@ function buildCargaRows(estado = "borrador") {
   });
 
   return data;
+}
+
+function validateFinalLoad() {
+  const missing = [];
+  currentRows().forEach(alumno => {
+    if (isAbsent(alumno)) return;
+    activeConsignas().forEach(consigna => {
+      const value = alumno.scores[consigna.scoreKey] ?? "";
+      if (value === "" || !scoreIsValid(value, consigna, alumno)) {
+        missing.push(`${alumno.nombre} - ${consigna.consignaId}`);
+      }
+    });
+  });
+  return missing;
+}
+
+function sendCargaRows(rows, labels) {
+  showSaveModal(labels.title, labels.message(rows.length), "Enviando...");
+  saveStatus.textContent = labels.status(rows.length);
+  sheetsPost("saveCargas", rows)
+    .then(result => {
+      showSaveModal("Confirmando guardado", `Verificando ${result?.rows || 0} registros en la solapa Cargas.`, "Confirmando...");
+      saveStatus.textContent = `Confirmando guardado (${result?.rows || 0} filas)...`;
+      return confirmSavedCargas(rows);
+    })
+    .then(check => {
+      if (!check.missing.length) {
+        showSaveModal(labels.successTitle, `${check.confirmed}/${check.expected} registros quedaron guardados en Sheets.`, "Listo", true);
+        saveStatus.textContent = `${labels.successTitle} (${check.confirmed}/${check.expected} filas)`;
+        if (rows.some(row => row.EstadoCarga === "cerrado")) closedNoticeKey = stateKey();
+        syncFromSheets();
+      } else {
+        showSaveModal("Guardado parcial", `${check.confirmed}/${check.expected} registros confirmados. Faltan ${check.missing.length}.`, "Revisar", true);
+        saveStatus.textContent = `Guardado parcial (${check.confirmed}/${check.expected} filas)`;
+      }
+    })
+    .catch(error => {
+      showSaveModal("No se pudo confirmar", error.message, "Error", true);
+      saveStatus.textContent = "Error al guardar";
+    });
 }
 
 function applyCargaRows(rows) {
@@ -720,7 +817,7 @@ function applyCargaRows(rows) {
 
     const puntaje = row.Puntaje ?? row.puntaje ?? "";
     alumno.scores[consigna.scoreKey] = puntaje === "" ? "" : Number(String(puntaje).replace(",", "."));
-    alumno.material = row.UsoMaterial || row.usomaterial || alumno.material;
+    alumno.estadoAlumno = normalizeEstadoAlumno(row.EstadoAlumno || row.estadoalumno || alumno.estadoAlumno || "Presente");
     alumno.pudoResolver = row.PudoResolver || row.pudoresolver || alumno.pudoResolver;
     alumno.observacion = row.Observacion || row.observacion || alumno.observacion;
     applied += 1;
@@ -759,6 +856,7 @@ function restoreLocalDraft(showStatus = true) {
 
 function applyImportedCargas(rows) {
   const mapped = normalizeCargaRows(rows).filter(row => row.DNI && row.ConsignaID);
+  cargas = mapped;
 
   const currentEvaluation = currentEvaluationId();
   const filtered = mapped.filter(row =>
@@ -879,6 +977,7 @@ function normalizeCargaRows(rows) {
     Curso: row.curso,
     DocenteEmail: row.docenteemail,
     Puntaje: row.puntaje,
+    EstadoAlumno: row.estadoalumno || row.estado || "Presente",
     UsoMaterial: row.usomaterial,
     PudoResolver: row.pudoresolver,
     Observacion: row.observacion,
@@ -1063,7 +1162,7 @@ async function syncFromSheets({ showLoading = false } = {}) {
 
 function exportCargas() {
   const { curso, materia, evaluacion } = selectedContext();
-  const headers = ["CargaID", "EvaluacionID", "ConsignaID", "DNI", "Curso", "DocenteEmail", "Puntaje", "UsoMaterial", "PudoResolver", "Observacion", "EstadoCarga", "FechaGuardado", "FechaCierre"];
+  const headers = ["CargaID", "EvaluacionID", "ConsignaID", "DNI", "Curso", "DocenteEmail", "Puntaje", "UsoMaterial", "PudoResolver", "Observacion", "EstadoCarga", "FechaGuardado", "FechaCierre", "EstadoAlumno"];
   const data = buildCargaRows("borrador").map(row => headers.map(header => row[header]));
 
   const csv = [headers, ...data].map(row => row.map(value => `"${String(value).replaceAll('"', '""')}"`).join(",")).join("\n");
@@ -1072,6 +1171,34 @@ function exportCargas() {
   const link = document.createElement("a");
   link.href = url;
   link.download = `cargas_${curso}_${materia}_${evaluacion}.csv`.replace(/\s+/g, "_");
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportVisibleGrid() {
+  const { curso, materia, evaluacion } = selectedContext();
+  const criteria = activeConsignas();
+  const headers = ["Nr.", "Alumno", "Estado alumno", ...criteria.map(c => `${c.consignaId} ${c.titulo}`), "Puntaje", "Calificacion", "Resolvio", "Observaciones"];
+  const maxRow = ["", "Valor maximo", "", ...criteria.map(c => c.max), "", "", "", ""];
+  const rows = currentRows().map((alumno, index) => {
+    const totals = studentTotals(alumno);
+    return [
+      index + 1,
+      alumno.nombre,
+      alumno.estadoAlumno || "Presente",
+      ...criteria.map(c => alumno.scores[c.scoreKey] ?? ""),
+      totals.puntaje.toFixed(1),
+      `${totals.porcentaje.toFixed(1)}%`,
+      alumno.pudoResolver,
+      alumno.observacion
+    ];
+  });
+  const csv = [headers, maxRow, ...rows].map(row => row.map(value => `"${String(value ?? "").replaceAll('"', '""')}"`).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `grilla_${curso}_${materia}_${evaluacion}.csv`.replace(/\s+/g, "_");
   link.click();
   URL.revokeObjectURL(url);
 }
@@ -1125,7 +1252,7 @@ table.addEventListener("change", event => {
   const target = event.target;
   const id = target.dataset.id;
   if (!id || !target.dataset.field) return;
-  findStudent(id)[target.dataset.field] = target.value;
+  findStudent(id)[target.dataset.field] = target.dataset.field === "estadoAlumno" ? normalizeEstadoAlumno(target.value) : target.value;
   saveStatus.textContent = "Cambios sin guardar";
   renderBody();
 });
@@ -1160,36 +1287,51 @@ document.getElementById("saveBtn").addEventListener("click", () => {
     alert("Para guardar, primero inicia sesion y conecta Google Sheets.");
     return;
   }
+  if (currentLoadIsClosed()) {
+    showSaveModal("Carga finalizada", "Este curso ya tiene la carga finalizada para esta evaluacion.", "Bloqueada", true);
+    return;
+  }
   saveLocalDraft();
   const rows = buildCargaRows("borrador");
   if (!rows.length) {
     showSaveModal("Sin cambios para guardar", "No hay puntajes mayores a 0 para enviar a Sheets.", "Sin registros", true);
     return;
   }
-  showSaveModal("Guardando borrador", `Enviando ${rows.length} registros con puntaje mayor a 0.`, "Enviando...");
-  saveStatus.textContent = `Enviando borrador a Sheets (${rows.length} filas)...`;
-  sheetsPost("saveCargas", rows)
-    .then(result => {
-      showSaveModal("Confirmando guardado", `Verificando ${result?.rows || 0} registros en la solapa Cargas.`, "Confirmando...");
-      saveStatus.textContent = `Confirmando guardado (${result?.rows || 0} filas)...`;
-      return confirmSavedCargas(rows);
-    })
-    .then(check => {
-      if (!check.missing.length) {
-        showSaveModal("Guardado confirmado", `${check.confirmed}/${check.expected} registros quedaron guardados en Sheets.`, "Listo", true);
-        saveStatus.textContent = `Guardado confirmado (${check.confirmed}/${check.expected} filas)`;
-      } else {
-        showSaveModal("Guardado parcial", `${check.confirmed}/${check.expected} registros confirmados. Faltan ${check.missing.length}.`, "Revisar", true);
-        saveStatus.textContent = `Guardado parcial (${check.confirmed}/${check.expected} filas)`;
-      }
-    })
-    .catch(error => {
-      showSaveModal("No se pudo confirmar", error.message, "Error", true);
-      saveStatus.textContent = "Error al guardar";
-    });
+  sendCargaRows(rows, {
+    title: "Guardando borrador",
+    message: count => `Enviando ${count} registros cargados a Sheets.`,
+    status: count => `Enviando borrador a Sheets (${count} filas)...`,
+    successTitle: "Guardado confirmado"
+  });
 });
 
-document.getElementById("exportBtn").addEventListener("click", exportCargas);
+document.getElementById("finishBtn").addEventListener("click", () => {
+  if (!scriptUrl() || !googleIdToken) {
+    alert("Para finalizar, primero inicia sesion y conecta Google Sheets.");
+    return;
+  }
+  if (currentLoadIsClosed()) {
+    showSaveModal("Carga finalizada", "Este curso ya tiene la carga finalizada para esta evaluacion.", "Bloqueada", true);
+    return;
+  }
+  const missing = validateFinalLoad();
+  if (missing.length) {
+    showSaveModal("Faltan datos", `Hay ${missing.length} consignas pendientes o invalidas. Revisa presentes e inclusion antes de finalizar.`, "Incompleta", true);
+    return;
+  }
+  const rows = buildCargaRows("cerrado");
+  sendCargaRows(rows, {
+    title: "Finalizando carga",
+    message: count => `Enviando ${count} registros finales a Sheets.`,
+    status: count => `Finalizando carga (${count} filas)...`,
+    successTitle: "Carga finalizada"
+  });
+});
+
+document.getElementById("exportBtn").addEventListener("click", () => {
+  if (isAdmin) exportCargas();
+  else exportVisibleGrid();
+});
 document.getElementById("exportMapsBtn").addEventListener("click", () => {
   if (!isAdmin) {
     alert("Solo administradores pueden exportar mapas.");
