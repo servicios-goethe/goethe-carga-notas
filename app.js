@@ -321,8 +321,8 @@ function ensureGridState() {
 
   state[key] = alumnosDelCurso().map((alumno, index) => {
     const scores = {};
-    consignas.forEach((consigna) => {
-      scores[consigna.scoreKey] = 0;
+  consignas.forEach((consigna) => {
+      scores[consigna.scoreKey] = "";
     });
     return {
       id: alumno.DNI,
@@ -386,7 +386,7 @@ function renderHeader() {
   const thead = table.querySelector("thead");
   const visible = activeConsignas();
   const maxRow = visible.map(c => `<th class="criteria-max">${escapeHTML(c.max)}</th>`).join("");
-  const emptySummaryRow = Array.from({ length: 5 }, () => `<th class="header-empty"></th>`).join("");
+  const emptySummaryRow = Array.from({ length: 4 }, () => `<th class="header-empty"></th>`).join("");
   const titleRow = visible.map(c => `
     <th class="criteria-title" title="${escapeHTML(c.titulo)}">
       <span class="criteria-code">${escapeHTML(c.consignaId || c.id)}</span>
@@ -396,9 +396,9 @@ function renderHeader() {
   thead.innerHTML = `
     <tr>
       <th class="sticky-col">Nr.</th>
-      <th class="student-col student-head">Alumno</th>
+      <th class="student-col student-head">Nombre</th>
+      <th>Alumno</th>
       ${titleRow}
-      <th>Estado alumno</th>
       <th>Puntaje</th>
       <th>Calificacion</th>
       <th>Resolvio</th>
@@ -407,6 +407,7 @@ function renderHeader() {
     <tr>
       <th class="sticky-col header-empty"></th>
       <th class="student-col max-label">Valor maximo</th>
+      <th class="header-empty"></th>
       ${maxRow}
       ${emptySummaryRow}
     </tr>
@@ -468,15 +469,6 @@ function renderBody() {
     tr.innerHTML = `
       <td class="sticky-col row-number">${index + 1}</td>
       <td class="student-col student-name">${alumno.nombre}</td>
-      ${activeConsignas().map((c) => {
-        const value = alumno.scores[c.scoreKey] ?? "";
-        const invalid = !scoreIsValid(value, c, alumno);
-        const max = isInclusion(alumno) ? 9 : c.max;
-        const disabled = isAbsent(alumno) || closed ? " disabled" : "";
-        return `<td class="score-cell ${invalid ? "invalid" : ""}">
-          <input type="number" min="0" max="${max}" step="${c.step}" value="${value}" data-id="${alumno.id}" data-score="${c.scoreKey}" title="${c.titulo}"${disabled}>
-        </td>`;
-      }).join("")}
       <td>
         <select data-id="${alumno.id}" data-field="estadoAlumno"${closed ? " disabled" : ""}>
           <option${alumno.estadoAlumno === "Presente" ? " selected" : ""}>Presente</option>
@@ -484,6 +476,16 @@ function renderBody() {
           <option${alumno.estadoAlumno === "Inclusion" ? " selected" : ""}>Inclusion</option>
         </select>
       </td>
+      ${activeConsignas().map((c) => {
+        const value = alumno.scores[c.scoreKey] ?? "";
+        const invalid = !scoreIsValid(value, c, alumno);
+        const max = isInclusion(alumno) ? 9 : c.max;
+        const disabled = isAbsent(alumno) || closed ? " disabled" : "";
+        const cellState = isAbsent(alumno) ? "not-required" : Number(value) === 9 ? "exempt" : value === "" ? "pending" : invalid ? "invalid" : "valid";
+        return `<td class="score-cell ${cellState}">
+          <input type="number" min="0" max="${max}" step="${c.step}" value="${value}" data-id="${alumno.id}" data-score="${c.scoreKey}" title="${c.titulo}"${disabled}>
+        </td>`;
+      }).join("")}
       <td class="calculated">${totals.puntaje.toFixed(1)}</td>
       <td class="calculated">${totals.porcentaje.toFixed(1)}%</td>
       <td><select data-id="${alumno.id}" data-field="pudoResolver"${closed ? " disabled" : ""}><option${alumno.pudoResolver === "Si" ? " selected" : ""}>Si</option><option${alumno.pudoResolver === "No" ? " selected" : ""}>No</option></select></td>
@@ -742,7 +744,7 @@ function buildCargaRows(estado = "borrador") {
   currentRows().forEach(alumno => {
     activeConsignas().forEach(consigna => {
       const puntaje = alumno.scores[consigna.scoreKey] ?? "";
-      if (!isFinal && !isAbsent(alumno) && (puntaje === "" || Number(puntaje) === 0)) return;
+      if (!isFinal && !isAbsent(alumno) && puntaje === "") return;
       data.push({
         CargaID: `${evaluacionId}-${alumno.dni}-${consigna.consignaId}`,
         EvaluacionID: evaluacionId,
@@ -929,6 +931,9 @@ function showSaveModal(title, message, indicator = "Procesando", canClose = fals
   saveModalTitle.textContent = title;
   saveModalMessage.textContent = message;
   saveModalIndicator.textContent = indicator;
+  saveModalIndicator.className = "saving-indicator";
+  if (["Error", "Revisar", "Incompleta"].includes(indicator)) saveModalIndicator.classList.add("warning");
+  if (indicator === "Listo") saveModalIndicator.classList.add("success");
   closeSaveModalBtn.hidden = !canClose;
   saveModal.hidden = false;
 }
@@ -1178,7 +1183,7 @@ function exportCargas() {
 function exportVisibleGrid() {
   const { curso, materia, evaluacion } = selectedContext();
   const criteria = activeConsignas();
-  const headers = ["Nr.", "Alumno", "Estado alumno", ...criteria.map(c => `${c.consignaId} ${c.titulo}`), "Puntaje", "Calificacion", "Resolvio", "Observaciones"];
+  const headers = ["Nr.", "Nombre", "Alumno", ...criteria.map(c => `${c.consignaId} ${c.titulo}`), "Puntaje", "Calificacion", "Resolvio", "Observaciones"];
   const maxRow = ["", "Valor maximo", "", ...criteria.map(c => c.max), "", "", "", ""];
   const rows = currentRows().map((alumno, index) => {
     const totals = studentTotals(alumno);
@@ -1294,7 +1299,7 @@ document.getElementById("saveBtn").addEventListener("click", () => {
   saveLocalDraft();
   const rows = buildCargaRows("borrador");
   if (!rows.length) {
-    showSaveModal("Sin cambios para guardar", "No hay puntajes mayores a 0 para enviar a Sheets.", "Sin registros", true);
+    showSaveModal("Sin cambios para guardar", "No hay puntajes cargados ni ausentes para enviar a Sheets.", "Sin registros", true);
     return;
   }
   sendCargaRows(rows, {
@@ -1316,7 +1321,9 @@ document.getElementById("finishBtn").addEventListener("click", () => {
   }
   const missing = validateFinalLoad();
   if (missing.length) {
-    showSaveModal("Faltan datos", `Hay ${missing.length} consignas pendientes o invalidas. Revisa presentes e inclusion antes de finalizar.`, "Incompleta", true);
+    const preview = missing.slice(0, 18).join("\n");
+    const rest = missing.length > 18 ? `\n... y ${missing.length - 18} pendientes mas.` : "";
+    showSaveModal("Faltan datos", `Hay ${missing.length} consignas pendientes o invalidas:\n${preview}${rest}`, "Incompleta", true);
     return;
   }
   const rows = buildCargaRows("cerrado");
