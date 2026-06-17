@@ -389,7 +389,6 @@ function renderHeader() {
   const emptySummaryRow = Array.from({ length: 4 }, () => `<th class="header-empty"></th>`).join("");
   const titleRow = visible.map(c => `
     <th class="criteria-title" title="${escapeHTML(c.titulo)}">
-      <span class="criteria-code">${escapeHTML(c.consignaId || c.id)}</span>
       <span class="criteria-name">${escapeHTML(c.titulo)}</span>
     </th>
   `).join("");
@@ -918,6 +917,8 @@ function refreshAdminState() {
   document.querySelectorAll(".admin-action").forEach(element => {
     element.style.display = isAdmin ? "inline-flex" : "none";
   });
+  const exportButton = document.getElementById("exportBtn");
+  if (exportButton) exportButton.textContent = isAdmin ? "Exportar cargas" : "Exportar grilla";
 }
 
 function refreshConfigVisibility() {
@@ -1183,7 +1184,7 @@ function exportCargas() {
 function exportVisibleGrid() {
   const { curso, materia, evaluacion } = selectedContext();
   const criteria = activeConsignas();
-  const headers = ["Nr.", "Nombre", "Alumno", ...criteria.map(c => `${c.consignaId} ${c.titulo}`), "Puntaje", "Calificacion", "Resolvio", "Observaciones"];
+  const headers = ["Nr.", "Nombre", "Alumno", ...criteria.map(c => c.titulo), "Puntaje", "Calificacion", "Resolvio", "Observaciones"];
   const maxRow = ["", "Valor maximo", "", ...criteria.map(c => c.max), "", "", "", ""];
   const rows = currentRows().map((alumno, index) => {
     const totals = studentTotals(alumno);

@@ -321,16 +321,8 @@ thead .header-empty {
   white-space: normal;
 }
 
-.criteria-code {
-  display: block;
-  color: rgba(255, 255, 255, .72);
-  font-size: 11px;
-  line-height: 1.1;
-}
-
 .criteria-name {
   display: -webkit-box;
-  margin-top: 3px;
   overflow: hidden;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
