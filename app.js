@@ -1099,6 +1099,7 @@ function ensureGoogleIdentityInitialized() {
 
   google.accounts.id.initialize({
     client_id: clientId,
+    auto_select: false,
     callback: handleGoogleCredential
   });
   googleInitializedClientId = clientId;
@@ -1106,15 +1107,12 @@ function ensureGoogleIdentityInitialized() {
 }
 
 function startGoogleLogin() {
-  if (googleIdToken) {
-    loginGate.hidden = true;
-    syncFromSheets({ showLoading: true });
-    return;
-  }
-
   if (googleLoginInProgress) return;
   if (!ensureGoogleIdentityInitialized()) return;
 
+  googleIdToken = "";
+  docenteEmail = "";
+  google.accounts.id.disableAutoSelect();
   googleLoginInProgress = true;
   google.accounts.id.prompt();
   window.setTimeout(() => {
