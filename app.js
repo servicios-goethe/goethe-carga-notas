@@ -1257,9 +1257,6 @@ table.addEventListener("input", event => {
     const scoreKey = target.dataset.score;
     alumno.scores[scoreKey] = target.value.trim();
     saveStatus.textContent = "Cambios sin guardar";
-    renderBody();
-    const next = table.querySelector(`[data-id="${id}"][data-score="${scoreKey}"]`);
-    if (next) focusGridControl(next);
   } else if (target.dataset.field) {
     alumno[target.dataset.field] = target.value;
     saveStatus.textContent = "Cambios sin guardar";
@@ -1269,8 +1266,15 @@ table.addEventListener("input", event => {
 table.addEventListener("change", event => {
   const target = event.target;
   const id = target.dataset.id;
-  if (!id || !target.dataset.field) return;
-  findStudent(id)[target.dataset.field] = target.dataset.field === "estadoAlumno" ? normalizeEstadoAlumno(target.value) : target.value;
+  if (!id) return;
+  const alumno = findStudent(id);
+  if (target.dataset.score !== undefined) {
+    alumno.scores[target.dataset.score] = target.value.trim();
+  } else if (target.dataset.field) {
+    alumno[target.dataset.field] = target.dataset.field === "estadoAlumno" ? normalizeEstadoAlumno(target.value) : target.value;
+  } else {
+    return;
+  }
   saveStatus.textContent = "Cambios sin guardar";
   renderBody();
 });
