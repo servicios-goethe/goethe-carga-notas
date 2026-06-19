@@ -386,7 +386,7 @@ function renderHeader() {
   const thead = table.querySelector("thead");
   const visible = activeConsignas();
   const maxRow = visible.map(c => `<th class="criteria-max">${escapeHTML(c.max)}</th>`).join("");
-  const emptySummaryRow = Array.from({ length: 4 }, () => `<th class="header-empty"></th>`).join("");
+  const emptySummaryRow = Array.from({ length: 3 }, () => `<th class="header-empty"></th>`).join("");
   const titleRow = visible.map(c => `
     <th class="criteria-title" title="${escapeHTML(c.titulo)}">
       <span class="criteria-name">${escapeHTML(c.titulo)}</span>
@@ -400,7 +400,6 @@ function renderHeader() {
       ${titleRow}
       <th>Puntaje</th>
       <th>Calificacion</th>
-      <th>Resolvio</th>
       <th>Observaciones</th>
     </tr>
     <tr>
@@ -480,14 +479,13 @@ function renderBody() {
         const invalid = !scoreIsValid(value, c, alumno);
         const max = isInclusion(alumno) ? 9 : c.max;
         const disabled = isAbsent(alumno) || closed ? " disabled" : "";
-        const cellState = isAbsent(alumno) ? "not-required" : Number(value) === 9 ? "exempt" : value === "" ? "pending" : invalid ? "invalid" : "valid";
+        const cellState = isAbsent(alumno) ? "not-required" : value === "" ? "pending" : invalid ? "invalid" : Number(value) === 9 ? "exempt" : "valid";
         return `<td class="score-cell ${cellState}">
           <input type="number" min="0" max="${max}" step="${c.step}" value="${value}" data-id="${alumno.id}" data-score="${c.scoreKey}" title="${c.titulo}"${disabled}>
         </td>`;
       }).join("")}
       <td class="calculated">${totals.puntaje.toFixed(1)}</td>
       <td class="calculated">${totals.porcentaje.toFixed(1)}%</td>
-      <td><select data-id="${alumno.id}" data-field="pudoResolver"${closed ? " disabled" : ""}><option${alumno.pudoResolver === "Si" ? " selected" : ""}>Si</option><option${alumno.pudoResolver === "No" ? " selected" : ""}>No</option></select></td>
       <td class="observations"><input type="text" value="${alumno.observacion}" data-id="${alumno.id}" data-field="observacion"${closed ? " disabled" : ""}></td>
     `;
     tbody.appendChild(tr);
@@ -744,6 +742,7 @@ function buildCargaRows(estado = "borrador") {
     activeConsignas().forEach(consigna => {
       const puntaje = alumno.scores[consigna.scoreKey] ?? "";
       if (!isFinal && !isAbsent(alumno) && puntaje === "") return;
+      if (!isAbsent(alumno) && !scoreIsValid(puntaje, consigna, alumno)) return;
       data.push({
         CargaID: `${evaluacionId}-${alumno.dni}-${consigna.consignaId}`,
         EvaluacionID: evaluacionId,
@@ -754,7 +753,7 @@ function buildCargaRows(estado = "borrador") {
         Puntaje: isAbsent(alumno) ? "" : puntaje,
         EstadoAlumno: alumno.estadoAlumno || "Presente",
         UsoMaterial: "",
-        PudoResolver: alumno.pudoResolver,
+        PudoResolver: "",
         Observacion: alumno.observacion,
         EstadoCarga: estado,
         FechaGuardado: fecha,
@@ -1182,8 +1181,8 @@ function exportCargas() {
 function exportVisibleGrid() {
   const { curso, materia, evaluacion } = selectedContext();
   const criteria = activeConsignas();
-  const headers = ["Nr.", "Nombre", "Alumno", ...criteria.map(c => c.titulo), "Puntaje", "Calificacion", "Resolvio", "Observaciones"];
-  const maxRow = ["", "Valor maximo", "", ...criteria.map(c => c.max), "", "", "", ""];
+  const headers = ["Nr.", "Nombre", "Alumno", ...criteria.map(c => c.titulo), "Puntaje", "Calificacion", "Observaciones"];
+  const maxRow = ["", "Valor maximo", "", ...criteria.map(c => c.max), "", "", ""];
   const rows = currentRows().map((alumno, index) => {
     const totals = studentTotals(alumno);
     return [
@@ -1193,7 +1192,6 @@ function exportVisibleGrid() {
       ...criteria.map(c => alumno.scores[c.scoreKey] ?? ""),
       totals.puntaje.toFixed(1),
       `${totals.porcentaje.toFixed(1)}%`,
-      alumno.pudoResolver,
       alumno.observacion
     ];
   });
