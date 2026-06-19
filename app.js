@@ -1163,13 +1163,17 @@ async function syncFromSheets({ showLoading = false } = {}) {
   }
 }
 
+function csvBlob(csv) {
+  return new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8" });
+}
+
 function exportCargas() {
   const { curso, materia, evaluacion } = selectedContext();
   const headers = ["CargaID", "EvaluacionID", "ConsignaID", "DNI", "Curso", "DocenteEmail", "Puntaje", "UsoMaterial", "PudoResolver", "Observacion", "EstadoCarga", "FechaGuardado", "FechaCierre", "EstadoAlumno"];
   const data = buildCargaRows("borrador").map(row => headers.map(header => row[header]));
 
   const csv = [headers, ...data].map(row => row.map(value => `"${String(value).replaceAll('"', '""')}"`).join(",")).join("\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const blob = csvBlob(csv);
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -1196,7 +1200,7 @@ function exportVisibleGrid() {
     ];
   });
   const csv = [headers, maxRow, ...rows].map(row => row.map(value => `"${String(value ?? "").replaceAll('"', '""')}"`).join(",")).join("\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const blob = csvBlob(csv);
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -1209,7 +1213,7 @@ function exportMapas() {
   const headers = ["MapaID", "MateriaID", "MateriaNombre", "EvaluacionID", "EvaluacionNombre", "Nivel", "Curso", "AnioLectivo", "ConsignaID", "ConsignaContenido", "ConsignaPuntajeMax", "ConsignaIncremento", "ConsignaOrden", "ConsignaActiva", "FechaCaducidad"];
   const rows = mapas.map(row => headers.map(header => row[header] ?? ""));
   const csv = [headers, ...rows].map(row => row.map(value => `"${String(value).replaceAll('"', '""')}"`).join(",")).join("\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const blob = csvBlob(csv);
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
