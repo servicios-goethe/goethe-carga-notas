@@ -223,6 +223,14 @@ function normalizeEstadoAlumno(value) {
   return "Presente";
 }
 
+function parseScoreValue(value) {
+  if (value === "") return null;
+  const text = String(value ?? "").trim().replace(",", ".");
+  if (!text || /[.,]$/.test(String(value).trim())) return null;
+  const number = Number(text);
+  return Number.isFinite(number) ? number : null;
+}
+
 function mapRowToConsigna(row, index) {
   return {
     id: Number(row.consignaorden) || index + 1,
@@ -414,7 +422,8 @@ function renderHeader() {
 
 function scoreIsValid(value, consigna, alumno = null) {
   if (value === "") return true;
-  const number = Number(value);
+  const number = parseScoreValue(value);
+  if (number === null) return false;
   if (number === 9) return Boolean(alumno && isInclusion(alumno));
   if (!Number.isFinite(number) || number < 0 || number > consigna.max) return false;
   return Math.abs(number / consigna.step - Math.round(number / consigna.step)) < 0.001;
@@ -429,10 +438,11 @@ function studentTotals(alumno) {
   let maximo = 0;
   const scores = activeConsignas().map((consigna) => {
     const value = alumno.scores[consigna.scoreKey] ?? "";
+    const number = parseScoreValue(value);
     const valid = scoreIsValid(value, consigna, alumno);
     if (!valid) alertas += 1;
-    if (Number(value) !== 9) maximo += consigna.max;
-    return valid && value !== "" ? Number(value) : 0;
+    if (number !== 9) maximo += consigna.max;
+    return valid && number !== null ? number : 0;
   });
   const completo = activeConsignas().every((consigna) => {
     const value = alumno.scores[consigna.scoreKey] ?? "";
@@ -476,12 +486,13 @@ function renderBody() {
       </td>
       ${activeConsignas().map((c) => {
         const value = alumno.scores[c.scoreKey] ?? "";
+        const number = parseScoreValue(value);
         const invalid = !scoreIsValid(value, c, alumno);
         const max = isInclusion(alumno) ? 9 : c.max;
         const disabled = isAbsent(alumno) || closed ? " disabled" : "";
-        const cellState = isAbsent(alumno) ? "not-required" : value === "" ? "pending" : invalid ? "invalid" : Number(value) === 9 ? "exempt" : "valid";
+        const cellState = isAbsent(alumno) ? "not-required" : value === "" ? "pending" : invalid ? "invalid" : number === 9 ? "exempt" : "valid";
         return `<td class="score-cell ${cellState}">
-          <input type="number" min="0" max="${max}" step="${c.step}" value="${value}" data-id="${alumno.id}" data-score="${c.scoreKey}" title="${c.titulo}"${disabled}>
+          <input type="text" inputmode="decimal" pattern="[0-9]*[,.]?[0-9]*" value="${value}" data-max="${max}" data-step="${c.step}" data-id="${alumno.id}" data-score="${c.scoreKey}" title="${c.titulo}"${disabled}>
         </td>`;
       }).join("")}
       <td class="calculated">${totals.puntaje.toFixed(1)}</td>
@@ -741,6 +752,7 @@ function buildCargaRows(estado = "borrador") {
   currentRows().forEach(alumno => {
     activeConsignas().forEach(consigna => {
       const puntaje = alumno.scores[consigna.scoreKey] ?? "";
+      const parsedPuntaje = parseScoreValue(puntaje);
       if (!isFinal && !isAbsent(alumno) && puntaje === "") return;
       if (!isAbsent(alumno) && !scoreIsValid(puntaje, consigna, alumno)) return;
       data.push({
@@ -750,7 +762,7 @@ function buildCargaRows(estado = "borrador") {
         DNI: alumno.dni,
         Curso: curso,
         DocenteEmail: docenteEmail,
-        Puntaje: isAbsent(alumno) ? "" : puntaje,
+        Puntaje: isAbsent(alumno) ? "" : parsedPuntaje,
         EstadoAlumno: alumno.estadoAlumno || "Presente",
         UsoMaterial: "",
         PudoResolver: "",
@@ -1243,7 +1255,7 @@ table.addEventListener("input", event => {
   const alumno = findStudent(id);
   if (target.dataset.score !== undefined) {
     const scoreKey = target.dataset.score;
-    alumno.scores[scoreKey] = target.value === "" ? "" : Number(target.value);
+    alumno.scores[scoreKey] = target.value.trim();
     saveStatus.textContent = "Cambios sin guardar";
     renderBody();
     const next = table.querySelector(`[data-id="${id}"][data-score="${scoreKey}"]`);
