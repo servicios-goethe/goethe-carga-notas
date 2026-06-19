@@ -678,7 +678,7 @@ function focusGridControl(control) {
 
   const wrapBox = tableWrap.getBoundingClientRect();
   const cellBox = cell.getBoundingClientRect();
-  const stickyWidth = 52 + 260;
+  const stickyWidth = 40 + 260;
   const leftSafe = wrapBox.left + stickyWidth + 18;
   const rightSafe = wrapBox.right - 18;
 
@@ -1270,6 +1270,8 @@ table.addEventListener("change", event => {
   const alumno = findStudent(id);
   if (target.dataset.score !== undefined) {
     alumno.scores[target.dataset.score] = target.value.trim();
+    saveStatus.textContent = "Cambios sin guardar";
+    return;
   } else if (target.dataset.field) {
     alumno[target.dataset.field] = target.dataset.field === "estadoAlumno" ? normalizeEstadoAlumno(target.value) : target.value;
   } else {
