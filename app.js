@@ -429,6 +429,17 @@ function scoreIsValid(value, consigna, alumno = null) {
   return Math.abs(number / consigna.step - Math.round(number / consigna.step)) < 0.001;
 }
 
+function scoreCellState(alumno, consigna) {
+  const value = alumno.scores[consigna.scoreKey] ?? "";
+  const number = parseScoreValue(value);
+  const invalid = !scoreIsValid(value, consigna, alumno);
+  if (isAbsent(alumno)) return "not-required";
+  if (value === "") return "pending";
+  if (invalid) return "invalid";
+  if (number === 9) return "exempt";
+  return "valid";
+}
+
 function studentTotals(alumno) {
   if (isAbsent(alumno)) {
     return { puntaje: 0, porcentaje: 0, completo: true, alertas: 0, maximo: 0 };
@@ -486,23 +497,46 @@ function renderBody() {
       </td>
       ${activeConsignas().map((c) => {
         const value = alumno.scores[c.scoreKey] ?? "";
-        const number = parseScoreValue(value);
-        const invalid = !scoreIsValid(value, c, alumno);
         const max = isInclusion(alumno) ? 9 : c.max;
         const disabled = isAbsent(alumno) || closed ? " disabled" : "";
-        const cellState = isAbsent(alumno) ? "not-required" : value === "" ? "pending" : invalid ? "invalid" : number === 9 ? "exempt" : "valid";
+        const cellState = scoreCellState(alumno, c);
         return `<td class="score-cell ${cellState}">
-          <input type="text" inputmode="decimal" pattern="[0-9]*[,.]?[0-9]*" value="${value}" data-max="${max}" data-step="${c.step}" data-id="${alumno.id}" data-score="${c.scoreKey}" title="${c.titulo}"${disabled}>
+          <input type="number" inputmode="decimal" min="0" max="${max}" step="${c.step}" value="${value}" data-id="${alumno.id}" data-score="${c.scoreKey}" title="${c.titulo}"${disabled}>
         </td>`;
       }).join("")}
-      <td class="calculated">${totals.puntaje.toFixed(1)}</td>
-      <td class="calculated">${totals.porcentaje.toFixed(1)}%</td>
+      <td class="calculated" data-total="puntaje">${totals.puntaje.toFixed(1)}</td>
+      <td class="calculated" data-total="porcentaje">${totals.porcentaje.toFixed(1)}%</td>
       <td class="observations"><input type="text" value="${alumno.observacion}" data-id="${alumno.id}" data-field="observacion"${closed ? " disabled" : ""}></td>
     `;
     tbody.appendChild(tr);
   });
   updateSummary();
   notifyClosedLoadIfNeeded();
+}
+
+function updateRenderedStudentRow(id) {
+  const alumno = findStudent(id);
+  if (!alumno) return;
+  const control = table.querySelector(`tbody [data-id="${CSS.escape(id)}"]`);
+  const tr = control ? control.closest("tr") : null;
+  if (!tr) return;
+
+  const totals = studentTotals(alumno);
+  tr.className = `${totals.completo ? "complete" : "incomplete"} ${totals.alertas ? "has-alert" : ""}`;
+  activeConsignas().forEach((consigna) => {
+    const input = tr.querySelector(`[data-score="${CSS.escape(consigna.scoreKey)}"]`);
+    if (!input) return;
+    const cell = input.closest(".score-cell");
+    const max = isInclusion(alumno) ? 9 : consigna.max;
+    input.max = String(max);
+    input.disabled = isAbsent(alumno) || currentLoadIsClosed();
+    if (cell) cell.className = `score-cell ${scoreCellState(alumno, consigna)}`;
+  });
+  const puntajeCell = tr.querySelector('[data-total="puntaje"]');
+  const porcentajeCell = tr.querySelector('[data-total="porcentaje"]');
+  if (puntajeCell) puntajeCell.textContent = totals.puntaje.toFixed(1);
+  if (porcentajeCell) porcentajeCell.textContent = `${totals.porcentaje.toFixed(1)}%`;
+  updateSummary();
 }
 
 function updateSummary() {
@@ -1257,6 +1291,7 @@ table.addEventListener("input", event => {
     const scoreKey = target.dataset.score;
     alumno.scores[scoreKey] = target.value.trim();
     saveStatus.textContent = "Cambios sin guardar";
+    updateRenderedStudentRow(id);
   } else if (target.dataset.field) {
     alumno[target.dataset.field] = target.value;
     saveStatus.textContent = "Cambios sin guardar";
@@ -1271,6 +1306,7 @@ table.addEventListener("change", event => {
   if (target.dataset.score !== undefined) {
     alumno.scores[target.dataset.score] = target.value.trim();
     saveStatus.textContent = "Cambios sin guardar";
+    updateRenderedStudentRow(id);
     return;
   } else if (target.dataset.field) {
     alumno[target.dataset.field] = target.dataset.field === "estadoAlumno" ? normalizeEstadoAlumno(target.value) : target.value;
