@@ -57,6 +57,7 @@ const loginGate = document.getElementById("loginGate");
 const loginHelp = document.getElementById("loginHelp");
 const gateLoginBtn = document.getElementById("gateLoginBtn");
 const openStandaloneBtn = document.getElementById("openStandaloneBtn");
+const googleButtonWrap = document.getElementById("googleButtonWrap");
 const saveModal = document.getElementById("saveModal");
 const saveModalTitle = document.getElementById("saveModalTitle");
 const saveModalMessage = document.getElementById("saveModalMessage");
@@ -71,6 +72,7 @@ let docenteEmail = "";
 let googleInitializedClientId = "";
 let googleLoginInProgress = false;
 let googleLoginFallbackTimer = 0;
+let googleButtonRenderedClientId = "";
 
 function normalizeText(value) {
   return String(value ?? "").trim();
@@ -1131,7 +1133,7 @@ function resetLoginButton() {
   googleLoginInProgress = false;
   if (gateLoginBtn) {
     gateLoginBtn.disabled = false;
-    gateLoginBtn.textContent = "Ingresar con Google";
+    gateLoginBtn.textContent = "Reintentar login";
   }
 }
 
@@ -1146,7 +1148,7 @@ function handleGoogleCredential(credentialResponse) {
   googleLoginInProgress = false;
   if (gateLoginBtn) {
     gateLoginBtn.disabled = false;
-    gateLoginBtn.textContent = "Ingresar con Google";
+    gateLoginBtn.textContent = "Reintentar login";
   }
   googleIdToken = credentialResponse.credential;
   const payload = decodeJwtPayload(googleIdToken);
@@ -1175,15 +1177,35 @@ function ensureGoogleIdentityInitialized() {
   google.accounts.id.initialize({
     client_id: clientId,
     auto_select: false,
+    use_fedcm_for_prompt: false,
+    use_fedcm_for_button: false,
     callback: handleGoogleCredential
   });
   googleInitializedClientId = clientId;
   return true;
 }
 
+function renderGoogleButton() {
+  if (!ensureGoogleIdentityInitialized() || !googleButtonWrap) return false;
+  const clientId = googleClientId();
+  if (googleButtonRenderedClientId === clientId && googleButtonWrap.children.length) return true;
+  googleButtonWrap.innerHTML = "";
+  google.accounts.id.renderButton(googleButtonWrap, {
+    type: "standard",
+    theme: "outline",
+    size: "large",
+    text: "signin_with",
+    shape: "rectangular",
+    logo_alignment: "left",
+    width: 280
+  });
+  googleButtonRenderedClientId = clientId;
+  return true;
+}
+
 function startGoogleLogin() {
   if (googleLoginInProgress) return;
-  if (!ensureGoogleIdentityInitialized()) return;
+  if (!renderGoogleButton()) return;
 
   googleIdToken = "";
   docenteEmail = "";
@@ -1191,22 +1213,26 @@ function startGoogleLogin() {
   googleLoginInProgress = true;
   if (gateLoginBtn) {
     gateLoginBtn.disabled = true;
-    gateLoginBtn.textContent = "Abriendo Google...";
+    gateLoginBtn.textContent = "Preparando login...";
   }
-  setLoginMessage("Abriendo selector de cuenta Google...", "");
+  setLoginMessage("Usa el boton oficial de Google que aparece arriba. Si no responde, abri la app en una pestaña nueva.", "warning");
   window.clearTimeout(googleLoginFallbackTimer);
-  google.accounts.id.prompt((notification) => {
-    if (notification.isNotDisplayed()) {
-      loginBlockedMessage(notification.getNotDisplayedReason?.() || "");
-    } else if (notification.isSkippedMoment()) {
-      loginBlockedMessage(notification.getSkippedReason?.() || "");
-    }
-  });
   googleLoginFallbackTimer = window.setTimeout(() => {
     if (googleLoginInProgress && !googleIdToken) {
-      loginBlockedMessage("sin respuesta del navegador");
+      resetLoginButton();
     }
   }, 4500);
+}
+
+function prepareGoogleButton(attempt = 0) {
+  if (!scriptUrl() || !googleClientId() || googleIdToken) return;
+  if (renderGoogleButton()) {
+    setLoginMessage("Usa el boton oficial de Google para ingresar con tu cuenta @goethe.edu.ar.");
+    return;
+  }
+  if (attempt < 20) {
+    window.setTimeout(() => prepareGoogleButton(attempt + 1), 250);
+  }
 }
 
 function normalizeSheetRows(rows) {
@@ -1618,6 +1644,7 @@ if (scriptUrl() && googleClientId()) {
   alumnos = [];
   mapas = [];
   saveStatus.textContent = "Esperando login";
+  prepareGoogleButton();
 } else {
   alumnos = demoAlumnos;
   mapas = demoMapas;

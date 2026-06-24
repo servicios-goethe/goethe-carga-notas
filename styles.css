@@ -89,6 +89,12 @@ body {
   gap: 10px;
 }
 
+.google-button-wrap {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+
 .debug-action {
   display: none;
 }
