@@ -63,6 +63,32 @@ body {
   color: var(--muted);
 }
 
+.login-help {
+  padding: 12px 14px;
+  background: #f4f7f5;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  line-height: 1.45;
+}
+
+.login-help.is-warning {
+  color: #744f00;
+  background: #fff8dc;
+  border-color: #e2c66b;
+}
+
+.login-help.is-error {
+  color: #8a1f16;
+  background: #fff1ef;
+  border-color: #e6aaa3;
+}
+
+.login-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .debug-action {
   display: none;
 }

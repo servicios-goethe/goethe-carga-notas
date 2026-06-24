@@ -54,6 +54,9 @@ const googleClientIdInput = document.getElementById("googleClientIdInput");
 const tableWrap = document.querySelector(".table-wrap");
 const saveStatus = document.getElementById("saveStatus");
 const loginGate = document.getElementById("loginGate");
+const loginHelp = document.getElementById("loginHelp");
+const gateLoginBtn = document.getElementById("gateLoginBtn");
+const openStandaloneBtn = document.getElementById("openStandaloneBtn");
 const saveModal = document.getElementById("saveModal");
 const saveModalTitle = document.getElementById("saveModalTitle");
 const saveModalMessage = document.getElementById("saveModalMessage");
@@ -67,6 +70,7 @@ let googleIdToken = "";
 let docenteEmail = "";
 let googleInitializedClientId = "";
 let googleLoginInProgress = false;
+let googleLoginFallbackTimer = 0;
 
 function normalizeText(value) {
   return String(value ?? "").trim();
@@ -1116,8 +1120,34 @@ function submitToAppsScript(url, payload) {
   }, 15000);
 }
 
-function handleGoogleCredential(credentialResponse) {
+function setLoginMessage(message, type = "") {
+  if (!loginHelp) return;
+  loginHelp.textContent = message;
+  loginHelp.classList.toggle("is-warning", type === "warning");
+  loginHelp.classList.toggle("is-error", type === "error");
+}
+
+function resetLoginButton() {
   googleLoginInProgress = false;
+  if (gateLoginBtn) {
+    gateLoginBtn.disabled = false;
+    gateLoginBtn.textContent = "Ingresar con Google";
+  }
+}
+
+function loginBlockedMessage(reason = "") {
+  const extra = reason ? ` (${reason})` : "";
+  setLoginMessage(`Google no mostro el selector de cuentas${extra}. Permiti ventanas emergentes y cookies, o abri la app en una pestaña nueva.`, "warning");
+  resetLoginButton();
+}
+
+function handleGoogleCredential(credentialResponse) {
+  window.clearTimeout(googleLoginFallbackTimer);
+  googleLoginInProgress = false;
+  if (gateLoginBtn) {
+    gateLoginBtn.disabled = false;
+    gateLoginBtn.textContent = "Ingresar con Google";
+  }
   googleIdToken = credentialResponse.credential;
   const payload = decodeJwtPayload(googleIdToken);
   docenteEmail = payload.email || "";
@@ -1130,13 +1160,13 @@ function handleGoogleCredential(credentialResponse) {
 function ensureGoogleIdentityInitialized() {
   const clientId = googleClientId();
   if (!clientId) {
-    alert("Primero carga el Google Client ID en Conectar Sheets.");
+    setLoginMessage("Falta configurar el Google Client ID para poder iniciar sesion.", "error");
     connectionModal.hidden = false;
     return false;
   }
 
   if (!window.google?.accounts?.id) {
-    alert("Google Identity Services todavia no cargo. Espera unos segundos y proba de nuevo.");
+    setLoginMessage("Google todavia no termino de cargar. Espera unos segundos y volve a intentar.", "warning");
     return false;
   }
 
@@ -1159,10 +1189,24 @@ function startGoogleLogin() {
   docenteEmail = "";
   google.accounts.id.disableAutoSelect();
   googleLoginInProgress = true;
-  google.accounts.id.prompt();
-  window.setTimeout(() => {
-    googleLoginInProgress = false;
-  }, 3000);
+  if (gateLoginBtn) {
+    gateLoginBtn.disabled = true;
+    gateLoginBtn.textContent = "Abriendo Google...";
+  }
+  setLoginMessage("Abriendo selector de cuenta Google...", "");
+  window.clearTimeout(googleLoginFallbackTimer);
+  google.accounts.id.prompt((notification) => {
+    if (notification.isNotDisplayed()) {
+      loginBlockedMessage(notification.getNotDisplayedReason?.() || "");
+    } else if (notification.isSkippedMoment()) {
+      loginBlockedMessage(notification.getSkippedReason?.() || "");
+    }
+  });
+  googleLoginFallbackTimer = window.setTimeout(() => {
+    if (googleLoginInProgress && !googleIdToken) {
+      loginBlockedMessage("sin respuesta del navegador");
+    }
+  }, 4500);
 }
 
 function normalizeSheetRows(rows) {
@@ -1437,7 +1481,10 @@ document.getElementById("saveConnectionBtn").addEventListener("click", () => {
 
 document.getElementById("syncSheetsBtn").addEventListener("click", syncFromSheets);
 document.getElementById("googleLoginBtn").addEventListener("click", startGoogleLogin);
-document.getElementById("gateLoginBtn").addEventListener("click", startGoogleLogin);
+gateLoginBtn.addEventListener("click", startGoogleLogin);
+openStandaloneBtn.addEventListener("click", () => {
+  window.open(window.location.href, "_blank", "noopener,noreferrer");
+});
 closeSaveModalBtn.addEventListener("click", closeSaveModal);
 
 document.getElementById("loadMasterBtn").addEventListener("click", () => {
@@ -1561,6 +1608,11 @@ document.getElementById("applyCriteriaBtn").addEventListener("click", () => {
 
 refreshConfigVisibility();
 refreshAdminState();
+if (window.self !== window.top) {
+  setLoginMessage("La app esta embebida en otra plataforma. Si Google no muestra el selector de cuentas, abri el Mapa en una pestaña nueva.", "warning");
+} else {
+  setLoginMessage("Usa una cuenta @goethe.edu.ar. Si el selector de Google no aparece, revisa que el navegador permita ventanas emergentes y cookies.");
+}
 
 if (scriptUrl() && googleClientId()) {
   alumnos = [];
