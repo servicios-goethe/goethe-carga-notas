@@ -1332,31 +1332,57 @@ function normalizeSheetRows(rows) {
   });
 }
 
+// Trae todos los datos. Intenta la accion 'bootstrap' (1 sola llamada al
+// backend optimizado). Si el backend todavia no expone bootstrap, cae a las
+// cuatro lecturas individuales en serie, para que la app funcione igual.
+async function fetchBootstrapBundle() {
+  try {
+    const data = await sheetsGet("bootstrap");
+    if (data && (data.alumnos || data.mapas || data.cargas || data.admins)) {
+      return {
+        alumnos: data.alumnos || [],
+        mapas: data.mapas || [],
+        cargas: data.cargas || [],
+        admins: data.admins || []
+      };
+    }
+    debugLog("bootstrap devolvio vacio, uso llamadas individuales");
+  } catch (error) {
+    debugLog("bootstrap no disponible, uso llamadas individuales:", error.message);
+  }
+
+  // Fallback: en serie a proposito (Apps Script serializa las ejecuciones
+  // concurrentes del mismo usuario; en paralelo las ultimas superan el timeout).
+  const alumnos = await sheetsGet("alumnos");
+  const mapas = await sheetsGet("mapas");
+  const cargas = await sheetsGet("cargas");
+  let admins = [];
+  try {
+    admins = await sheetsGet("admins");
+  } catch (adminError) {
+    console.warn("No se pudo leer Admins:", adminError);
+  }
+  return {
+    alumnos: alumnos || [],
+    mapas: mapas || [],
+    cargas: cargas || [],
+    admins: admins || []
+  };
+}
+
 async function syncFromSheets({ showLoading = false } = {}) {
   if (showLoading) {
     showSaveModal("Cargando", "Sincronizando alumnos, mapas, cargas y permisos con Google Sheets. La primera carga puede tardar hasta un minuto.", "Sincronizando...");
   }
   saveStatus.textContent = "Sincronizando Sheets...";
   try {
-    // En serie a proposito: Apps Script serializa las ejecuciones concurrentes
-    // del mismo usuario, asi que disparar varias en paralelo (Promise.all) hace
-    // que las ultimas esperen en cola y superen el timeout del cliente.
-    const remoteAlumnos = await sheetsGet("alumnos");
-    const remoteMapas = await sheetsGet("mapas");
-    const remoteCargas = await sheetsGet("cargas");
-    debugLog("Sync recibido | alumnos:", remoteAlumnos?.length ?? 0, "| mapas:", remoteMapas?.length ?? 0, "| cargas:", remoteCargas?.length ?? 0);
-    applyImportedAlumnos(normalizeSheetRows(remoteAlumnos));
-    applyImportedMapas(normalizeSheetRows(remoteMapas));
-    applyImportedCargas(normalizeSheetRows(remoteCargas));
-    try {
-      const remoteAdmins = await sheetsGet("admins");
-      applyImportedAdmins(remoteAdmins);
-    } catch (adminError) {
-      applyImportedAdmins([]);
-      console.warn("No se pudo leer Admins:", adminError);
-      saveStatus.textContent = "Sheets sincronizado - falta publicar Admins";
-    }
-    if (admins.length) saveStatus.textContent = "Sheets sincronizado";
+    const bundle = await fetchBootstrapBundle();
+    debugLog("Sync recibido | alumnos:", bundle.alumnos.length, "| mapas:", bundle.mapas.length, "| cargas:", bundle.cargas.length, "| admins:", bundle.admins.length);
+    applyImportedAlumnos(normalizeSheetRows(bundle.alumnos));
+    applyImportedMapas(normalizeSheetRows(bundle.mapas));
+    applyImportedCargas(normalizeSheetRows(bundle.cargas));
+    applyImportedAdmins(bundle.admins);
+    saveStatus.textContent = admins.length ? "Sheets sincronizado" : "Sheets sincronizado - falta publicar Admins";
     if (showLoading) closeSaveModal();
   } catch (error) {
     saveStatus.textContent = "Error al sincronizar Sheets";
