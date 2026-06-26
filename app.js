@@ -86,6 +86,15 @@ function normalizeHeader(value) {
     .toLowerCase();
 }
 
+function normalizeDniKey(value) {
+  return normalizeHeader(value).replace(/[^a-z0-9]/g, "");
+}
+
+function consignaOrderKey(value) {
+  const digits = String(value ?? "").replace(/\D/g, "");
+  return digits ? String(Number(digits)) : "";
+}
+
 function parseCSV(text) {
   const rows = [];
   let row = [];
@@ -858,24 +867,52 @@ function sendCargaRows(rows, labels) {
 }
 
 function applyCargaRows(rows) {
-  const byDni = new Map(currentRows().map(alumno => [String(alumno.dni), alumno]));
+  const byDni = new Map(currentRows().map(alumno => [normalizeDniKey(alumno.dni), alumno]));
   const active = activeConsignas();
   const byConsigna = new Map(active.map(consigna => [normalizeHeader(consigna.consignaId), consigna]));
-  const byOrden = new Map(active.map((consigna, index) => [String(consigna.id || index + 1), consigna]));
+  const byOrden = new Map(active.map((consigna, index) => [consignaOrderKey(consigna.id || index + 1), consigna]));
+  const pendingByAlumno = new Map();
   let applied = 0;
 
-  rows.forEach(row => {
-    const alumno = byDni.get(String(row.DNI || row.dni));
-    const rawConsignaId = String(row.ConsignaID || row.consignaid || "");
-    const consigna = byConsigna.get(normalizeHeader(rawConsignaId)) || byOrden.get(rawConsignaId.replace(/\D/g, ""));
-    if (!alumno || !consigna) return;
-
+  function applyCargaValue(alumno, consigna, row) {
+    if (!alumno || !consigna) return 0;
     const puntaje = row.Puntaje ?? row.puntaje ?? "";
     alumno.scores[consigna.scoreKey] = puntaje === "" ? "" : String(puntaje).replace(",", ".");
     alumno.estadoAlumno = normalizeEstadoAlumno(row.EstadoAlumno || row.estadoalumno || alumno.estadoAlumno || "Presente");
     alumno.pudoResolver = row.PudoResolver || row.pudoresolver || alumno.pudoResolver;
     alumno.observacion = row.Observacion || row.observacion || alumno.observacion;
-    applied += 1;
+    return 1;
+  }
+
+  rows.forEach((row, index) => {
+    const alumno = byDni.get(normalizeDniKey(row.DNI || row.dni));
+    const rawConsignaId = String(row.ConsignaID || row.consignaid || "");
+    const consigna = byConsigna.get(normalizeHeader(rawConsignaId)) || byOrden.get(consignaOrderKey(rawConsignaId));
+    if (!alumno) return;
+    if (consigna) {
+      applied += applyCargaValue(alumno, consigna, row);
+      return;
+    }
+
+    const key = normalizeDniKey(row.DNI || row.dni);
+    const items = pendingByAlumno.get(key) || [];
+    items.push({ row, index });
+    pendingByAlumno.set(key, items);
+  });
+
+  pendingByAlumno.forEach((items, dniKey) => {
+    const alumno = byDni.get(dniKey);
+    items
+      .sort((a, b) => {
+        const orderA = Number(consignaOrderKey(a.row.ConsignaID || a.row.consignaid)) || a.index + 1;
+        const orderB = Number(consignaOrderKey(b.row.ConsignaID || b.row.consignaid)) || b.index + 1;
+        return orderA - orderB;
+      })
+      .forEach((item, index) => {
+        const consigna = active[index];
+        if (!consigna || alumno.scores[consigna.scoreKey] !== "") return;
+        applied += applyCargaValue(alumno, consigna, item.row);
+      });
   });
 
   return applied;
