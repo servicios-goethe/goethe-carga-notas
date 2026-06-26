@@ -374,6 +374,7 @@ function ensureGridState() {
       observacion: ""
     };
   });
+  applyRemoteCargasForSelection();
   restoreLocalDraft(false);
 }
 
@@ -962,16 +963,26 @@ function restoreLocalDraft(showStatus = true) {
   }
 }
 
+// Aplica a la grilla actual las cargas remotas (array global `cargas`) que
+// corresponden al curso + evaluacion seleccionados. Se llama al construir el
+// estado de cada curso/evaluacion (ensureGridState), por eso las notas ya
+// cargadas aparecen al cambiar de curso, no solo en el que estaba al sincronizar.
+function applyRemoteCargasForSelection() {
+  if (!courseFilter.value || !cargas.length) return 0;
+  const curso = courseFilter.value;
+  const evaluacionId = currentEvaluationId();
+  const filtered = cargas.filter(row =>
+    (!row.Curso || row.Curso === curso) &&
+    (!row.EvaluacionID || row.EvaluacionID === evaluacionId || row.EvaluacionID === evaluationFilter.value)
+  );
+  return applyCargaRows(filtered);
+}
+
 function applyImportedCargas(rows) {
   const mapped = normalizeCargaRows(rows).filter(row => row.DNI && row.ConsignaID);
   cargas = mapped;
 
-  const currentEvaluation = currentEvaluationId();
-  const filtered = mapped.filter(row =>
-    (!row.Curso || row.Curso === courseFilter.value) &&
-    (!row.EvaluacionID || row.EvaluacionID === currentEvaluation || row.EvaluacionID === evaluationFilter.value)
-  );
-  const applied = applyCargaRows(filtered);
+  const applied = applyRemoteCargasForSelection();
   renderBody();
   saveStatus.textContent = `Cargas importadas: ${applied} registros aplicados`;
 }
