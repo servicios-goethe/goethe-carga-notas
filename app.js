@@ -1071,13 +1071,25 @@ function requireScriptUrl() {
   return url;
 }
 
-async function sheetsGet(action) {
+async function sheetsGet(action, { attempts = 2 } = {}) {
   const url = requireScriptUrl();
   if (!url) return null;
   if (!requireGoogleLogin()) return null;
-  const payload = await jsonpRequest(url, { action, idToken: googleIdToken, t: Date.now() });
-  if (!payload.ok) throw new Error(payload.error || "Respuesta invalida");
-  return payload.data;
+  // Reintento ante timeout: Apps Script tarda mucho en el arranque en frio.
+  // El primer intento "despierta" la instancia; el segundo ya corre caliente.
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const payload = await jsonpRequest(url, { action, idToken: googleIdToken, t: Date.now() });
+      if (!payload.ok) throw new Error(payload.error || "Respuesta invalida");
+      return payload.data;
+    } catch (error) {
+      lastError = error;
+      debugLog(`sheetsGet ${action} intento ${attempt}/${attempts} fallo:`, error.message);
+      if (attempt < attempts) await wait(1500);
+    }
+  }
+  throw lastError;
 }
 
 async function sheetsPost(action, data) {
@@ -1142,7 +1154,7 @@ function jsonpRequest(baseUrl, params) {
       cleanup();
       debugLog("JSONP ✗ TIMEOUT", params.action, "tras", Date.now() - startedAt, "ms — el callback nunca llego. Causas tipicas: deployment NO es 'Cualquier persona', o doGet no envuelve la respuesta en el callback.");
       reject(new Error("Tiempo de espera agotado al consultar Apps Script."));
-    }, 45000);
+    }, 60000);
 
     function cleanup() {
       window.clearTimeout(timer);
@@ -1322,7 +1334,7 @@ function normalizeSheetRows(rows) {
 
 async function syncFromSheets({ showLoading = false } = {}) {
   if (showLoading) {
-    showSaveModal("Cargando", "Sincronizando alumnos, mapas, cargas y permisos con Google Sheets.", "Sincronizando...");
+    showSaveModal("Cargando", "Sincronizando alumnos, mapas, cargas y permisos con Google Sheets. La primera carga puede tardar hasta un minuto.", "Sincronizando...");
   }
   saveStatus.textContent = "Sincronizando Sheets...";
   try {
