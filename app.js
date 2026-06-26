@@ -39,6 +39,22 @@ const APP_CONFIG = {
 const storagePrefix = "goethe-mapa-aprendizajes";
 const scriptUrlStorageKey = `${storagePrefix}||apps-script-url`;
 const googleClientIdStorageKey = `${storagePrefix}||google-client-id`;
+const debugStorageKey = `${storagePrefix}||debug`;
+
+// --- Fase 0: diagnostico ---
+// Logger apagado por defecto. Prender con goethe.enableDebug() en la consola
+// (o localStorage["goethe-mapa-aprendizajes||debug"] = "1") y recargar.
+let debugEnabled = false;
+try { debugEnabled = localStorage.getItem(debugStorageKey) === "1"; } catch {}
+
+function debugLog(...args) {
+  if (debugEnabled) console.log("[goethe]", ...args);
+}
+
+function maskToken(token) {
+  const value = String(token || "");
+  return value ? `${value.slice(0, 12)}…(${value.length} chars)` : "(vacio)";
+}
 
 const table = document.getElementById("gradeTable");
 const courseFilter = document.getElementById("courseFilter");
@@ -1108,8 +1124,12 @@ function jsonpRequest(baseUrl, params) {
       url.searchParams.set(key, value);
     });
 
+    const startedAt = Date.now();
+    debugLog("JSONP →", params.action || "?", "| base:", baseUrl, "| idToken:", maskToken(params.idToken));
+
     const timer = window.setTimeout(() => {
       cleanup();
+      debugLog("JSONP ✗ TIMEOUT", params.action, "tras", Date.now() - startedAt, "ms — el callback nunca llego. Causas tipicas: deployment NO es 'Cualquier persona', o doGet no envuelve la respuesta en el callback.");
       reject(new Error("Tiempo de espera agotado al consultar Apps Script."));
     }, 20000);
 
@@ -1121,11 +1141,13 @@ function jsonpRequest(baseUrl, params) {
 
     window[callbackName] = payload => {
       cleanup();
+      debugLog("JSONP ←", params.action, "en", Date.now() - startedAt, "ms |", payload && payload.ok ? "ok" : "ERROR", payload);
       resolve(payload);
     };
 
     script.onerror = () => {
       cleanup();
+      debugLog("JSONP ✗ onerror", params.action, "tras", Date.now() - startedAt, "ms — el <script> no cargo. Suele ser que /exec respondio HTML (login de Google) en vez de JS. Revisa permisos del deployment.");
       reject(new Error("No se pudo cargar Apps Script. Revisa la URL /exec y el despliegue."));
     };
 
@@ -1135,6 +1157,7 @@ function jsonpRequest(baseUrl, params) {
 }
 
 function submitToAppsScript(url, payload) {
+  debugLog("POST →", payload.action, Array.isArray(payload.data) ? `${payload.data.length} filas` : "", "| idToken:", maskToken(payload.idToken), "(respuesta no legible: iframe cross-origin)");
   const iframeName = `gas_post_${Date.now()}`;
   const iframe = document.createElement("iframe");
   iframe.name = iframeName;
@@ -1193,6 +1216,7 @@ function handleGoogleCredential(credentialResponse) {
   googleIdToken = credentialResponse.credential;
   const payload = decodeJwtPayload(googleIdToken);
   docenteEmail = payload.email || "";
+  debugLog("Login OK |", docenteEmail || "(sin email)", "| aud:", payload.aud, "| hd:", payload.hd, "| token:", maskToken(googleIdToken));
   saveStatus.textContent = docenteEmail ? `Sesion: ${docenteEmail}` : "Sesion Google iniciada";
   refreshAdminState();
   loginGate.hidden = true;
@@ -1296,6 +1320,7 @@ async function syncFromSheets({ showLoading = false } = {}) {
       sheetsGet("mapas"),
       sheetsGet("cargas")
     ]);
+    debugLog("Sync recibido | alumnos:", remoteAlumnos?.length ?? 0, "| mapas:", remoteMapas?.length ?? 0, "| cargas:", remoteCargas?.length ?? 0);
     applyImportedAlumnos(normalizeSheetRows(remoteAlumnos));
     applyImportedMapas(normalizeSheetRows(remoteMapas));
     applyImportedCargas(normalizeSheetRows(remoteCargas));
@@ -1671,6 +1696,63 @@ document.getElementById("applyCriteriaBtn").addEventListener("click", () => {
       });
   }
 });
+
+// --- Fase 0: consola de diagnostico ---
+// Desde DevTools: goethe.help()
+window.goethe = {
+  help() {
+    console.log([
+      "Diagnostico Goethe — comandos:",
+      "  goethe.enableDebug()   prende los logs detallados (persiste, recarga)",
+      "  goethe.disableDebug()  apaga los logs",
+      "  goethe.status()        muestra config, login y datos en memoria",
+      "  goethe.testUrl('alumnos')  imprime la URL /exec exacta para pegar en el navegador",
+      "  goethe.ping('alumnos')     hace el GET real y muestra la respuesta",
+      "  acciones validas: alumnos | mapas | cargas | admins"
+    ].join("\n"));
+  },
+  enableDebug() {
+    debugEnabled = true;
+    try { localStorage.setItem(debugStorageKey, "1"); } catch {}
+    console.log("[goethe] debug ON");
+  },
+  disableDebug() {
+    debugEnabled = false;
+    try { localStorage.removeItem(debugStorageKey); } catch {}
+    console.log("[goethe] debug OFF");
+  },
+  status() {
+    const info = {
+      scriptUrl: scriptUrl() || "(sin configurar)",
+      googleClientId: googleClientId() || "(sin configurar)",
+      logueado: Boolean(googleIdToken),
+      docenteEmail: docenteEmail || "(sin sesion)",
+      esAdmin: isAdmin,
+      embebidoEnIframe: window.self !== window.top,
+      enMemoria: { alumnos: alumnos.length, mapas: mapas.length, cargas: cargas.length, admins: admins.length }
+    };
+    console.table ? console.table(info) : console.log(info);
+    return info;
+  },
+  testUrl(action = "alumnos") {
+    const base = scriptUrl();
+    if (!base) { console.warn("Falta scriptUrl"); return ""; }
+    const url = new URL(base);
+    url.searchParams.set("action", action);
+    url.searchParams.set("idToken", googleIdToken || "");
+    url.searchParams.set("t", Date.now());
+    url.searchParams.set("callback", "console.log");
+    const full = url.toString();
+    console.log("Pega esta URL en una pestaña nueva. Esperado: console.log({ok:true,...}). Si ves HTML/login → deployment mal configurado.\n", full);
+    return full;
+  },
+  ping(action = "alumnos") {
+    console.log(`[goethe] ping ${action}…`);
+    return sheetsGet(action)
+      .then(data => { console.log(`[goethe] ${action} OK:`, Array.isArray(data) ? `${data.length} filas` : data, data); return data; })
+      .catch(error => { console.error(`[goethe] ${action} FALLO:`, error.message); throw error; });
+  }
+};
 
 refreshConfigVisibility();
 refreshAdminState();
