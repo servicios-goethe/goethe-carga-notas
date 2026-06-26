@@ -1131,7 +1131,7 @@ function jsonpRequest(baseUrl, params) {
       cleanup();
       debugLog("JSONP ✗ TIMEOUT", params.action, "tras", Date.now() - startedAt, "ms — el callback nunca llego. Causas tipicas: deployment NO es 'Cualquier persona', o doGet no envuelve la respuesta en el callback.");
       reject(new Error("Tiempo de espera agotado al consultar Apps Script."));
-    }, 20000);
+    }, 45000);
 
     function cleanup() {
       window.clearTimeout(timer);
@@ -1315,11 +1315,12 @@ async function syncFromSheets({ showLoading = false } = {}) {
   }
   saveStatus.textContent = "Sincronizando Sheets...";
   try {
-    const [remoteAlumnos, remoteMapas, remoteCargas] = await Promise.all([
-      sheetsGet("alumnos"),
-      sheetsGet("mapas"),
-      sheetsGet("cargas")
-    ]);
+    // En serie a proposito: Apps Script serializa las ejecuciones concurrentes
+    // del mismo usuario, asi que disparar varias en paralelo (Promise.all) hace
+    // que las ultimas esperen en cola y superen el timeout del cliente.
+    const remoteAlumnos = await sheetsGet("alumnos");
+    const remoteMapas = await sheetsGet("mapas");
+    const remoteCargas = await sheetsGet("cargas");
     debugLog("Sync recibido | alumnos:", remoteAlumnos?.length ?? 0, "| mapas:", remoteMapas?.length ?? 0, "| cargas:", remoteCargas?.length ?? 0);
     applyImportedAlumnos(normalizeSheetRows(remoteAlumnos));
     applyImportedMapas(normalizeSheetRows(remoteMapas));
