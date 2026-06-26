@@ -36,6 +36,7 @@ const APP_CONFIG = {
   scriptUrl: "https://script.google.com/macros/s/AKfycbxrwC0TARz15BwQqwGVzJEqs_ZnLlBy4Q681fim94px4NlrgTVNgHMzkJw9bS3DUkUi/exec",
   googleClientId: "225474160522-7rk742a5qubfaf0te9uqiokfr4umj7al.apps.googleusercontent.com"
 };
+const ALLOWED_DOMAIN = "goethe.edu.ar";
 const storagePrefix = "goethe-mapa-aprendizajes";
 const scriptUrlStorageKey = `${storagePrefix}||apps-script-url`;
 const googleClientIdStorageKey = `${storagePrefix}||google-client-id`;
@@ -872,8 +873,11 @@ function sendCargaRows(rows, labels) {
         saveStatus.textContent = `${labels.successTitle} (${check.confirmed}/${check.expected} filas)`;
         if (rows.some(row => row.EstadoCarga === "cerrado")) closedNoticeKey = stateKey();
         syncFromSheets();
+      } else if (check.confirmed === 0) {
+        showSaveModal("No se pudo guardar", `No quedo ningun registro en Sheets. Suele pasar cuando la sesion vencio: cerra este aviso, volve a iniciar sesion con tu cuenta @${ALLOWED_DOMAIN} y proba de nuevo.`, "Error", true);
+        saveStatus.textContent = "No se guardo (revisar sesion)";
       } else {
-        showSaveModal("Guardado parcial", `${check.confirmed}/${check.expected} registros confirmados. Faltan ${check.missing.length}.`, "Revisar", true);
+        showSaveModal("Guardado parcial", `${check.confirmed}/${check.expected} registros confirmados. Faltan ${check.missing.length}. Puede ser demora de Google Sheets: espera unos segundos y volve a guardar.`, "Revisar", true);
         saveStatus.textContent = `Guardado parcial (${check.confirmed}/${check.expected} filas)`;
       }
     })
@@ -1123,18 +1127,24 @@ function normalizeCargaRows(rows) {
   }));
 }
 
-async function confirmSavedCargas(expectedRows) {
-  await wait(1800);
-  const remoteRows = normalizeCargaRows(await sheetsGet("cargas"));
-  const remoteIds = new Set(remoteRows.map(row => row.CargaID).filter(Boolean));
+async function confirmSavedCargas(expectedRows, { attempts = 3 } = {}) {
   const expectedIds = expectedRows.map(row => row.CargaID);
-  const missing = expectedIds.filter(id => !remoteIds.has(id));
+  let confirmed = 0;
+  let missing = expectedIds.slice();
 
-  return {
-    expected: expectedIds.length,
-    confirmed: expectedIds.length - missing.length,
-    missing
-  };
+  // El POST es asincrono (iframe) y Sheets tarda en reflejar la escritura, asi
+  // que reintentamos la lectura antes de declarar un guardado parcial.
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    await wait(attempt === 1 ? 1800 : 2500);
+    const remoteRows = normalizeCargaRows(await sheetsGet("cargas"));
+    const remoteIds = new Set(remoteRows.map(row => row.CargaID).filter(Boolean));
+    missing = expectedIds.filter(id => !remoteIds.has(id));
+    confirmed = expectedIds.length - missing.length;
+    debugLog(`confirmSavedCargas intento ${attempt}/${attempts}: ${confirmed}/${expectedIds.length} confirmados`);
+    if (!missing.length) break;
+  }
+
+  return { expected: expectedIds.length, confirmed, missing };
 }
 
 function jsonpRequest(baseUrl, params) {
@@ -1236,11 +1246,25 @@ function handleGoogleCredential(credentialResponse) {
     gateLoginBtn.disabled = false;
     gateLoginBtn.textContent = "Reintentar login";
   }
-  googleIdToken = credentialResponse.credential;
-  const payload = decodeJwtPayload(googleIdToken);
-  docenteEmail = payload.email || "";
-  debugLog("Login OK |", docenteEmail || "(sin email)", "| aud:", payload.aud, "| hd:", payload.hd, "| token:", maskToken(googleIdToken));
-  saveStatus.textContent = docenteEmail ? `Sesion: ${docenteEmail}` : "Sesion Google iniciada";
+  const token = credentialResponse.credential;
+  const payload = decodeJwtPayload(token);
+  const email = String(payload.email || "").toLowerCase();
+
+  // El hd del initialize es solo una sugerencia del selector: validamos aca
+  // para rechazar de verdad cuentas que no sean del dominio institucional.
+  if (!email.endsWith(`@${ALLOWED_DOMAIN}`)) {
+    googleIdToken = "";
+    docenteEmail = "";
+    debugLog("Login rechazado: dominio no permitido |", email || "(sin email)");
+    setLoginMessage(`La cuenta ${email || "seleccionada"} no es @${ALLOWED_DOMAIN}. Inicia sesion con tu cuenta institucional.`, "error");
+    if (window.google?.accounts?.id) google.accounts.id.disableAutoSelect();
+    return;
+  }
+
+  googleIdToken = token;
+  docenteEmail = email;
+  debugLog("Login OK |", docenteEmail, "| aud:", payload.aud, "| hd:", payload.hd, "| token:", maskToken(googleIdToken));
+  saveStatus.textContent = `Sesion: ${docenteEmail}`;
   refreshAdminState();
   loginGate.hidden = true;
   syncFromSheets({ showLoading: true });
@@ -1264,6 +1288,7 @@ function ensureGoogleIdentityInitialized() {
   google.accounts.id.initialize({
     client_id: clientId,
     auto_select: false,
+    hd: ALLOWED_DOMAIN,
     use_fedcm_for_prompt: false,
     use_fedcm_for_button: false,
     callback: handleGoogleCredential
