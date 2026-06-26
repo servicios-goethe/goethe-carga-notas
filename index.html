@@ -6,7 +6,6 @@
   <title>Goethe Schule - Mapa de Aprendizajes</title>
   <link rel="icon" type="image/png" href="favicon.png">
   <link rel="stylesheet" href="styles.css">
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
   <div class="login-gate" id="loginGate">
@@ -14,10 +13,9 @@
       <img src="logo.jpg" alt="Goethe Schule">
       <h1>Mapa de Aprendizajes</h1>
       <p>Inicia sesion con tu cuenta institucional para cargar y consultar informacion.</p>
-      <p class="login-help" id="loginHelp">Usa una cuenta @goethe.edu.ar. Si el selector de Google no aparece, proba abrir la app en una pestaña nueva.</p>
-      <div id="googleButtonWrap" class="google-button-wrap"></div>
+      <p class="login-help" id="loginHelp">El acceso se valida con tu cuenta Google del dominio @goethe.edu.ar mediante Apps Script.</p>
       <div class="login-actions">
-        <button id="gateLoginBtn" type="button" class="primary">Reintentar login</button>
+        <button id="gateLoginBtn" type="button" class="primary">Ingresar</button>
         <button id="openStandaloneBtn" type="button">Abrir en pestaña nueva</button>
       </div>
       <button id="gateConnectionBtn" class="config-action" type="button">Configurar conexion</button>
@@ -134,10 +132,6 @@
         <label>
           URL Apps Script
           <input id="scriptUrlInput" type="url" placeholder="https://script.google.com/macros/s/.../exec">
-        </label>
-        <label>
-          Google Client ID
-          <input id="googleClientIdInput" type="text" placeholder="000000000000-xxxx.apps.googleusercontent.com">
         </label>
         <div class="connection-actions">
           <button id="syncSheetsBtn" type="button">Sincronizar maestros</button>
