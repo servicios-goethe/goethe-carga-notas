@@ -859,16 +859,19 @@ function sendCargaRows(rows, labels) {
 
 function applyCargaRows(rows) {
   const byDni = new Map(currentRows().map(alumno => [String(alumno.dni), alumno]));
-  const byConsigna = new Map(consignas.map(consigna => [String(consigna.consignaId), consigna]));
+  const active = activeConsignas();
+  const byConsigna = new Map(active.map(consigna => [normalizeHeader(consigna.consignaId), consigna]));
+  const byOrden = new Map(active.map((consigna, index) => [String(consigna.id || index + 1), consigna]));
   let applied = 0;
 
   rows.forEach(row => {
     const alumno = byDni.get(String(row.DNI || row.dni));
-    const consigna = byConsigna.get(String(row.ConsignaID || row.consignaid));
+    const rawConsignaId = String(row.ConsignaID || row.consignaid || "");
+    const consigna = byConsigna.get(normalizeHeader(rawConsignaId)) || byOrden.get(rawConsignaId.replace(/\D/g, ""));
     if (!alumno || !consigna) return;
 
     const puntaje = row.Puntaje ?? row.puntaje ?? "";
-    alumno.scores[consigna.scoreKey] = puntaje === "" ? "" : Number(String(puntaje).replace(",", "."));
+    alumno.scores[consigna.scoreKey] = puntaje === "" ? "" : String(puntaje).replace(",", ".");
     alumno.estadoAlumno = normalizeEstadoAlumno(row.EstadoAlumno || row.estadoalumno || alumno.estadoAlumno || "Presente");
     alumno.pudoResolver = row.PudoResolver || row.pudoresolver || alumno.pudoResolver;
     alumno.observacion = row.Observacion || row.observacion || alumno.observacion;
