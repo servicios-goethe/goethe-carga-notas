@@ -33,7 +33,7 @@ let cargas = [];
 let isAdmin = false;
 let closedNoticeKey = "";
 const APP_CONFIG = {
-  scriptUrl: "https://script.google.com/a/macros/goethe.edu.ar/s/AKfycbxrwC0TARz15BwQqwGVzJEqs_ZnLlBy4Q681fim94px4NlrgTVNgHMzkJw9bS3DUkUi/exec"
+  scriptUrl: "https://script.google.com/macros/s/AKfycbxrwC0TARz15BwQqwGVzJEqs_ZnLlBy4Q681fim94px4NlrgTVNgHMzkJw9bS3DUkUi/exec"
 };
 const storagePrefix = "goethe-mapa-aprendizajes";
 const scriptUrlStorageKey = `${storagePrefix}||apps-script-url`;
