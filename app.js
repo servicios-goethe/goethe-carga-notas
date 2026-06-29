@@ -1423,59 +1423,236 @@ function csvBlob(csv) {
   return new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8" });
 }
 
-function exportCargas() {
-  const { curso, materia, evaluacion } = selectedContext();
-  const headers = ["CargaID", "EvaluacionID", "ConsignaID", "DNI", "Curso", "DocenteEmail", "Puntaje", "UsoMaterial", "PudoResolver", "Observacion", "EstadoCarga", "FechaGuardado", "FechaCierre", "EstadoAlumno"];
-  const data = buildCargaRows("borrador").map(row => headers.map(header => row[header]));
-
-  const csv = [headers, ...data].map(row => row.map(value => `"${String(value).replaceAll('"', '""')}"`).join(",")).join("\n");
-  const blob = csvBlob(csv);
+// Descarga robusta: agrega el <a> al DOM (Firefox/algunos navegadores no
+// disparan el click si no esta en el documento) y difiere el revoke para no
+// cancelar la descarga.
+function triggerDownload(blob, filename) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `cargas_${curso}_${materia}_${evaluacion}.csv`.replace(/\s+/g, "_");
+  link.download = filename;
+  link.style.display = "none";
+  document.body.appendChild(link);
   link.click();
-  URL.revokeObjectURL(url);
+  window.setTimeout(() => {
+    if (link.parentNode) link.parentNode.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, 1500);
+}
+
+// --- Exportacion a XLSX real, sin dependencias ---
+// El CSV con comas se abre mal en Excel en espa\u00f1ol (usa ; como separador) y
+// los decimales con punto quedan como texto. Generamos un .xlsx valido para
+// que abra siempre bien, con numeros como numeros.
+const CRC32_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let n = 0; n < 256; n += 1) {
+    let c = n;
+    for (let k = 0; k < 8; k += 1) {
+      c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    }
+    table[n] = c >>> 0;
+  }
+  return table;
+})();
+
+function crc32(bytes) {
+  let crc = 0xFFFFFFFF;
+  for (let i = 0; i < bytes.length; i += 1) {
+    crc = CRC32_TABLE[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+  }
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
+const xlsxEncoder = new TextEncoder();
+
+// Empaqueta archivos en un ZIP sin compresion (metodo "store"), suficiente
+// para un .xlsx valido.
+function zipStore(files) {
+  const chunks = [];
+  const central = [];
+  let offset = 0;
+
+  function bytesLE(value, length) {
+    const arr = new Uint8Array(length);
+    let v = value >>> 0;
+    for (let i = 0; i < length; i += 1) {
+      arr[i] = v & 0xFF;
+      v = Math.floor(v / 256);
+    }
+    return arr;
+  }
+
+  files.forEach(file => {
+    const nameBytes = xlsxEncoder.encode(file.name);
+    const crc = crc32(file.data);
+    const size = file.data.length;
+
+    const local = [
+      bytesLE(0x04034b50, 4), bytesLE(20, 2), bytesLE(0, 2), bytesLE(0, 2),
+      bytesLE(0, 2), bytesLE(0, 2), bytesLE(crc, 4), bytesLE(size, 4),
+      bytesLE(size, 4), bytesLE(nameBytes.length, 2), bytesLE(0, 2), nameBytes
+    ];
+    local.forEach(part => chunks.push(part));
+    chunks.push(file.data);
+
+    const localLength = local.reduce((sum, part) => sum + part.length, 0);
+
+    const cen = [
+      bytesLE(0x02014b50, 4), bytesLE(20, 2), bytesLE(20, 2), bytesLE(0, 2),
+      bytesLE(0, 2), bytesLE(0, 2), bytesLE(0, 2), bytesLE(crc, 4),
+      bytesLE(size, 4), bytesLE(size, 4), bytesLE(nameBytes.length, 2),
+      bytesLE(0, 2), bytesLE(0, 2), bytesLE(0, 2), bytesLE(0, 2),
+      bytesLE(0, 4), bytesLE(offset, 4), nameBytes
+    ];
+    central.push(cen);
+
+    offset += localLength + file.data.length;
+  });
+
+  const centralStart = offset;
+  let centralSize = 0;
+  central.forEach(cen => {
+    cen.forEach(part => {
+      chunks.push(part);
+      centralSize += part.length;
+    });
+  });
+
+  const end = [
+    bytesLE(0x06054b50, 4), bytesLE(0, 2), bytesLE(0, 2),
+    bytesLE(files.length, 2), bytesLE(files.length, 2),
+    bytesLE(centralSize, 4), bytesLE(centralStart, 4), bytesLE(0, 2)
+  ];
+  end.forEach(part => chunks.push(part));
+
+  const total = chunks.reduce((sum, part) => sum + part.length, 0);
+  const out = new Uint8Array(total);
+  let pos = 0;
+  chunks.forEach(part => { out.set(part, pos); pos += part.length; });
+  return out;
+}
+
+function xmlEscape(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+}
+
+function xlsxColName(index) {
+  let name = "";
+  let n = index;
+  do {
+    name = String.fromCharCode(65 + (n % 26)) + name;
+    n = Math.floor(n / 26) - 1;
+  } while (n >= 0);
+  return name;
+}
+
+// Convierte un valor a numero para la celda solo si es claramente numerico,
+// preservando como texto los IDs/DNI con ceros a la izquierda.
+function numericCell(value) {
+  if (value === "" || value == null) return "";
+  if (typeof value === "number") return Number.isFinite(value) ? value : "";
+  const text = String(value).trim();
+  if (/^-?\d+(?:[.,]\d+)?$/.test(text) && !/^0\d/.test(text)) {
+    return Number(text.replace(",", "."));
+  }
+  return String(value);
+}
+
+function sheetXml(aoa) {
+  const rowsXml = aoa.map((row, r) => {
+    const cellsXml = row.map((cell, c) => {
+      const ref = xlsxColName(c) + (r + 1);
+      if (typeof cell === "number" && Number.isFinite(cell)) {
+        return `<c r="${ref}"><v>${cell}</v></c>`;
+      }
+      return `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${xmlEscape(cell)}</t></is></c>`;
+    }).join("");
+    return `<row r="${r + 1}">${cellsXml}</row>`;
+  }).join("");
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+    `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${rowsXml}</sheetData></worksheet>`;
+}
+
+function sanitizeSheetName(name) {
+  const clean = String(name || "Hoja1").replace(/[:\\/?*[\]]/g, " ").trim().slice(0, 31);
+  return clean || "Hoja1";
+}
+
+function downloadXlsx(filename, sheetName, aoa) {
+  const safeSheet = xmlEscape(sanitizeSheetName(sheetName));
+  const files = [
+    { name: "[Content_Types].xml", text:
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+      `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
+      `<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
+      `<Default Extension="xml" ContentType="application/xml"/>` +
+      `<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>` +
+      `<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>` +
+      `</Types>` },
+    { name: "_rels/.rels", text:
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+      `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+      `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>` +
+      `</Relationships>` },
+    { name: "xl/workbook.xml", text:
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+      `<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
+      `<sheets><sheet name="${safeSheet}" sheetId="1" r:id="rId1"/></sheets></workbook>` },
+    { name: "xl/_rels/workbook.xml.rels", text:
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+      `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+      `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>` +
+      `</Relationships>` },
+    { name: "xl/worksheets/sheet1.xml", text: sheetXml(aoa) }
+  ].map(file => ({ name: file.name, data: xlsxEncoder.encode(file.text) }));
+
+  const blob = new Blob([zipStore(files)], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  triggerDownload(blob, filename);
+}
+
+function exportCargas() {
+  const { curso, materia, evaluacion } = selectedContext();
+  const headers = ["CargaID", "EvaluacionID", "ConsignaID", "DNI", "Curso", "DocenteEmail", "Puntaje", "UsoMaterial", "PudoResolver", "Observacion", "EstadoCarga", "FechaGuardado", "FechaCierre", "EstadoAlumno"];
+  const data = buildCargaRows("borrador").map(row =>
+    headers.map(header => header === "Puntaje" ? numericCell(row[header]) : (row[header] ?? ""))
+  );
+
+  const filename = `cargas_${curso}_${materia}_${evaluacion}.xlsx`.replace(/\s+/g, "_");
+  downloadXlsx(filename, "Cargas", [headers, ...data]);
 }
 
 function exportVisibleGrid() {
   const { curso, materia, evaluacion } = selectedContext();
   const criteria = activeConsignas();
-  const headers = ["Nr.", "Nombre", "Alumno", ...criteria.map(c => c.titulo), "Puntaje", "Calificacion", "Observaciones"];
-  const maxRow = ["", "Valor maximo", "", ...criteria.map(c => c.max), "", "", ""];
+  const headers = ["Nr.", "Nombre", "Estado", ...criteria.map(c => c.titulo), "Puntaje", "Calificacion", "Observaciones"];
+  const maxRow = ["", "Valor maximo", "", ...criteria.map(c => numericCell(c.max)), "", "", ""];
   const rows = currentRows().map((alumno, index) => {
     const totals = studentTotals(alumno);
     return [
       index + 1,
       alumno.nombre,
       alumno.estadoAlumno || "Presente",
-      ...criteria.map(c => alumno.scores[c.scoreKey] ?? ""),
-      totals.puntaje.toFixed(1),
+      ...criteria.map(c => numericCell(alumno.scores[c.scoreKey] ?? "")),
+      Number(totals.puntaje.toFixed(1)),
       `${totals.porcentaje.toFixed(1)}%`,
       alumno.observacion
     ];
   });
-  const csv = [headers, maxRow, ...rows].map(row => row.map(value => `"${String(value ?? "").replaceAll('"', '""')}"`).join(",")).join("\n");
-  const blob = csvBlob(csv);
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `grilla_${curso}_${materia}_${evaluacion}.csv`.replace(/\s+/g, "_");
-  link.click();
-  URL.revokeObjectURL(url);
+  const filename = `grilla_${curso}_${materia}_${evaluacion}.xlsx`.replace(/\s+/g, "_");
+  downloadXlsx(filename, `${curso} ${materia}`, [headers, maxRow, ...rows]);
 }
 
 function exportMapas() {
   const headers = ["MapaID", "MateriaID", "MateriaNombre", "EvaluacionID", "EvaluacionNombre", "Nivel", "Curso", "AnioLectivo", "ConsignaID", "ConsignaContenido", "ConsignaPuntajeMax", "ConsignaIncremento", "ConsignaOrden", "ConsignaActiva", "FechaCaducidad"];
   const rows = mapas.map(row => headers.map(header => row[header] ?? ""));
   const csv = [headers, ...rows].map(row => row.map(value => `"${String(value).replaceAll('"', '""')}"`).join(",")).join("\n");
-  const blob = csvBlob(csv);
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "mapas_actualizados.csv";
-  link.click();
-  URL.revokeObjectURL(url);
+  triggerDownload(csvBlob(csv), "mapas_actualizados.csv");
 }
 
 table.addEventListener("keydown", event => {
