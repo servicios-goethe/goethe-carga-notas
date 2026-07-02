@@ -1871,8 +1871,10 @@ async function syncFromSheets({ showLoading = false } = {}) {
   saveStatus.textContent = "Sincronizando Sheets...";
   try {
     // Las cargas viajan solo para el curso visible; el resto se pide al
-    // entrar a cada curso (ensureCargasForCourse).
-    const cursoInicial = courseFilter.value || "";
+    // entrar a cada curso (ensureCargasForCourse). En el primer login todavia
+    // no hay alumnos importados y courseFilter tiene el valor demo del HTML:
+    // en ese caso no se pide curso (las trae ensureCargasForCourse despues).
+    const cursoInicial = alumnos.length ? (courseFilter.value || "") : "";
     const bundle = await fetchBootstrapBundle(cursoInicial);
     debugLog("Sync recibido | alumnos:", bundle.alumnos.length, "| mapas:", bundle.mapas.length, "| cargas:", bundle.cargas.length, `(curso: ${cursoInicial || "ninguno"})`, "| admins:", bundle.admins.length);
     applyImportedAlumnos(normalizeSheetRows(bundle.alumnos));
