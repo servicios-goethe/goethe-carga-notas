@@ -715,7 +715,11 @@ function renderBody() {
   const query = searchInput.value.trim().toLowerCase();
   const tbody = table.querySelector("tbody");
   const onlyIncomplete = showIncomplete.checked;
-  const closed = currentLoadIsClosed();
+  // Bloqueada si la carga esta cerrada O si los registros del curso todavia
+  // no llegaron del backend (evita tipear sobre datos incompletos).
+  const pending = cargasPendingForCourse();
+  const closed = currentLoadIsClosed() || pending;
+  tableWrap?.classList.toggle("loading-cargas", pending);
   tbody.innerHTML = "";
 
   state[key].forEach((alumno, index) => {
@@ -781,7 +785,7 @@ function updateRenderedStudentRow(id) {
     if (input.type === "number") {
       input.max = String(isInclusion(alumno) ? 9 : consigna.max);
     }
-    input.disabled = isAbsent(alumno) || currentLoadIsClosed();
+    input.disabled = isAbsent(alumno) || currentLoadIsClosed() || cargasPendingForCourse();
     if (cell) cell.className = `score-cell ${scoreCellState(alumno, consigna)}`;
   });
   const puntajeCell = tr.querySelector('[data-total="puntaje"]');
@@ -803,7 +807,8 @@ function updateSummary() {
   document.getElementById("alertCount").textContent = alertas;
   document.getElementById("gridTitle").textContent = courseFilter.value || "Sin curso";
   const closed = currentLoadIsClosed();
-  document.getElementById("gridSubtitle").textContent = `${subjectFilter.value || "Sin materia"} - ${evaluationFilter.value || "Sin evaluacion"}${closed ? " - carga finalizada" : ""}`;
+  const pending = cargasPendingForCourse();
+  document.getElementById("gridSubtitle").textContent = `${subjectFilter.value || "Sin materia"} - ${evaluationFilter.value || "Sin evaluacion"}${closed ? " - carga finalizada" : ""}${pending ? " - cargando registros..." : ""}`;
 }
 
 function currentRows() {
@@ -1800,6 +1805,16 @@ function normalizeSheetRows(rows) {
 // Cursos cuyas cargas ya se trajeron del backend (se piden por curso: la
 // solapa Cargas crecio tanto que bajarla entera rompe la transferencia).
 let cargasLoadedCursos = new Set();
+let cargasFetchInFlight = new Set();
+
+// Mientras los registros del curso no llegaron, la grilla queda bloqueada:
+// si el docente pudiera tipear sobre la grilla "vacia", lo remoto despues le
+// pisaria lo tipeado (o editaria una carga que en realidad esta cerrada).
+function cargasPendingForCourse(curso = courseFilter.value) {
+  if (!curso) return false;
+  if (!scriptUrl() || !googleClientId() || !googleIdToken) return false;
+  return !cargasLoadedCursos.has(curso);
+}
 
 // Trae los datos maestros + las cargas SOLO del curso indicado. Intenta la
 // accion 'bootstrap' (1 sola llamada). Si el backend no la expone, cae a las
@@ -1841,10 +1856,11 @@ async function fetchBootstrapBundle(curso = "") {
 }
 
 // Carga perezosa de las cargas de un curso la primera vez que se lo visita.
+// La grilla queda bloqueada (cargasPendingForCourse) hasta que lleguen.
 async function ensureCargasForCourse(curso) {
-  if (!curso || cargasLoadedCursos.has(curso)) return;
+  if (!curso || cargasLoadedCursos.has(curso) || cargasFetchInFlight.has(curso)) return;
   if (!scriptUrl() || !googleClientId() || !googleIdToken) return;
-  cargasLoadedCursos.add(curso);
+  cargasFetchInFlight.add(curso);
   saveStatus.textContent = `Cargando registros de ${curso}...`;
   try {
     const remote = normalizeCargaRows(normalizeSheetRows(await sheetsGet("cargas", { params: { curso } })))
@@ -1853,14 +1869,18 @@ async function ensureCargasForCourse(curso) {
     // preservando el borrador local (se aplica despues, y pisa lo remoto).
     cargas = cargas.filter(row => row.Curso !== curso).concat(remote);
     debugLog(`Cargas de ${curso}:`, remote.length, "filas");
+    cargasLoadedCursos.add(curso);
     applyRemoteCargasForSelection();
     restoreLocalDraft(false);
-    renderBody();
     saveStatus.textContent = "Sheets sincronizado";
   } catch (error) {
-    cargasLoadedCursos.delete(curso);
     saveStatus.textContent = `No se pudieron cargar los registros de ${curso}`;
+    showNotice(`No se pudieron traer los registros de ${curso} (${error.message}). La grilla queda bloqueada: volve a seleccionar el curso para reintentar.`, "Registros del curso");
     debugLog(`ensureCargasForCourse ${curso} fallo:`, error.message);
+  } finally {
+    cargasFetchInFlight.delete(curso);
+    // Re-render con el estado final: desbloquea si llegaron los datos.
+    if (courseFilter.value === curso) renderBody();
   }
 }
 
@@ -2232,6 +2252,10 @@ document.getElementById("saveBtn").addEventListener("click", () => {
     showNotice("Para guardar, primero inicia sesion y conecta Google Sheets.");
     return;
   }
+  if (cargasPendingForCourse()) {
+    showNotice("Todavia se estan cargando los registros del curso. Espera unos segundos.");
+    return;
+  }
   if (currentLoadIsClosed()) {
     showSaveModal("Carga finalizada", "Este curso ya tiene la carga finalizada para esta evaluacion.", "Bloqueada", true);
     return;
@@ -2253,6 +2277,10 @@ document.getElementById("saveBtn").addEventListener("click", () => {
 document.getElementById("finishBtn").addEventListener("click", () => {
   if (!scriptUrl() || !googleIdToken) {
     showNotice("Para finalizar, primero inicia sesion y conecta Google Sheets.");
+    return;
+  }
+  if (cargasPendingForCourse()) {
+    showNotice("Todavia se estan cargando los registros del curso. Espera unos segundos.");
     return;
   }
   if (currentLoadIsClosed()) {

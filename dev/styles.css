@@ -500,6 +500,12 @@ td select:focus {
   padding: 0 6px;
 }
 
+/* Grilla esperando los registros del curso: atenuada y sin edicion */
+.table-wrap.loading-cargas tbody {
+  opacity: .5;
+  pointer-events: none;
+}
+
 .calculated {
   text-align: center;
   font-weight: 800;
