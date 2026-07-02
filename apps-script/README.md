@@ -33,10 +33,18 @@ antes de llegar al código y la app muestra "No se pudo cargar Apps Script"
 para todos los usuarios menos el dueño. La seguridad real la da la validación
 del `idToken` (dominio `goethe.edu.ar` + Client ID) dentro de `authorizeUser`.
 
-## Esquema de la solapa Mapas (jerarquía de consignas)
+## Esquema de la solapa Mapas (jerarquía y tipos de calificación)
 
-`MAPAS_HEADERS` incluye al final: `Competencia`, `Eje`, `PeriodoEvaluacion`.
-Van al final a propósito: el orden de las columnas existentes no cambia y el
-frontend de producción anterior sigue funcionando aunque el backend ya escriba
-las columnas nuevas. Se pueden cargar a mano en el Sheet o desde el editor de
-Consignas (admins) en la app.
+`MAPAS_HEADERS` incluye al final: `Competencia`, `Eje`, `PeriodoEvaluacion`,
+`TipoCalificacion` y `EscalaConceptual`. Van al final a propósito: el orden de
+las columnas existentes no cambia y el frontend de producción anterior sigue
+funcionando aunque el backend ya escriba las columnas nuevas.
+
+- `TipoCalificacion`: `numerica` (default) o `conceptual`.
+- `EscalaConceptual`: valores separados por `|` (ej. `Logrado|En proceso|Iniciado`),
+  editable por materia. Las consignas conceptuales se cargan con un desplegable
+  y no suman al puntaje; el valor elegido se guarda como texto en `Puntaje`
+  de la solapa Cargas (sin cambios de esquema en Cargas).
+
+Todo se administra desde el modal "Administrar mapas" de la app (admins); no
+hace falta cargar nada a mano en el Sheet.

@@ -308,8 +308,42 @@ function mapRowToConsigna(row, index) {
     step: Number(String(row.consignaincremento).replace(",", ".")) || 0.5,
     active: !["false", "0", "no", "n"].includes(normalizeText(row.consignaactiva).toLowerCase()),
     competencia: normalizeText(row.competencia),
-    eje: normalizeText(row.eje)
+    eje: normalizeText(row.eje),
+    tipo: normalizeHeader(row.tipocalificacion) === "conceptual" ? "conceptual" : "numerica",
+    escala: normalizeText(row.escalaconceptual)
   };
+}
+
+// Calificacion conceptual (KG y otros niveles): la consigna se evalua con una
+// escala de valores definida por materia (ej. Logrado|En proceso|Iniciado) en
+// vez de puntaje numerico. No participa de totales ni porcentajes.
+function isConceptual(consigna) {
+  return consigna.tipo === "conceptual";
+}
+
+function escalaValues(consigna) {
+  return String(consigna.escala || "")
+    .split("|")
+    .map(normalizeText)
+    .filter(Boolean);
+}
+
+// Normaliza la escala tipeada por el admin: acepta | , o ; como separador.
+function normalizeEscalaInput(value) {
+  return String(value || "")
+    .split(/[|,;]/)
+    .map(normalizeText)
+    .filter(Boolean)
+    .join("|");
+}
+
+// La escala es editable POR MATERIA: toma la ya definida en cualquier mapa de
+// esa materia como valor por defecto.
+function escalaDeMateria(materiaNombre) {
+  return mapas.find(row =>
+    normalizeHeader(row.MateriaNombre) === normalizeHeader(materiaNombre) &&
+    normalizeText(row.EscalaConceptual)
+  )?.EscalaConceptual || "";
 }
 
 function syncConsignasFromSelection() {
@@ -326,7 +360,9 @@ function syncConsignasFromSelection() {
     consignaincremento: row.ConsignaIncremento,
     consignaactiva: row.ConsignaActiva,
     competencia: row.Competencia,
-    eje: row.Eje
+    eje: row.Eje,
+    tipocalificacion: row.TipoCalificacion,
+    escalaconceptual: row.EscalaConceptual
   }, index));
 }
 
@@ -381,7 +417,9 @@ function consignasForEvaluation(materiaNombre, evaluacionNombre) {
       consignaincremento: row.ConsignaIncremento,
       consignaactiva: row.ConsignaActiva,
       competencia: row.Competencia,
-      eje: row.Eje
+      eje: row.Eje,
+      tipocalificacion: row.TipoCalificacion,
+      escalaconceptual: row.EscalaConceptual
     }, index));
 }
 
@@ -405,7 +443,9 @@ function blankConsigna(orden) {
     step: 0.5,
     active: true,
     competencia: "",
-    eje: ""
+    eje: "",
+    tipo: "numerica",
+    escala: ""
   };
 }
 
@@ -579,7 +619,7 @@ function groupRowHTML(label, values, className) {
 function renderHeader() {
   const thead = table.querySelector("thead");
   const visible = activeConsignas();
-  const maxRow = visible.map(c => `<th class="criteria-max">${escapeHTML(c.max)}</th>`).join("");
+  const maxRow = visible.map(c => `<th class="criteria-max">${isConceptual(c) ? "—" : escapeHTML(c.max)}</th>`).join("");
   const emptySummaryRow = Array.from({ length: 3 }, () => `<th class="header-empty"></th>`).join("");
   const titleRow = visible.map(c => `
     <th class="criteria-title" title="${escapeHTML(c.titulo)}">
@@ -614,6 +654,7 @@ function renderHeader() {
 
 function scoreIsValid(value, consigna, alumno = null) {
   if (value === "") return true;
+  if (isConceptual(consigna)) return escalaValues(consigna).includes(normalizeText(value));
   const number = parseScoreValue(value);
   if (number === null) return false;
   if (number === 9) return Boolean(alumno && isInclusion(alumno));
@@ -639,11 +680,14 @@ function studentTotals(alumno) {
 
   let alertas = 0;
   let maximo = 0;
+  // Solo las consignas numericas suman al puntaje/porcentaje; las
+  // conceptuales cuentan para completitud y alertas pero no para totales.
   const scores = activeConsignas().map((consigna) => {
     const value = alumno.scores[consigna.scoreKey] ?? "";
-    const number = parseScoreValue(value);
     const valid = scoreIsValid(value, consigna, alumno);
     if (!valid) alertas += 1;
+    if (isConceptual(consigna)) return 0;
+    const number = parseScoreValue(value);
     if (number !== 9) maximo += consigna.max;
     return valid && number !== null ? number : 0;
   });
@@ -689,11 +733,22 @@ function renderBody() {
       </td>
       ${activeConsignas().map((c) => {
         const value = alumno.scores[c.scoreKey] ?? "";
-        const max = isInclusion(alumno) ? 9 : c.max;
         const disabled = isAbsent(alumno) || closed ? " disabled" : "";
         const cellState = scoreCellState(alumno, c);
+        if (isConceptual(c)) {
+          const options = escalaValues(c).map(option =>
+            `<option value="${escapeHTML(option)}"${normalizeText(value) === option ? " selected" : ""}>${escapeHTML(option)}</option>`
+          ).join("");
+          return `<td class="score-cell ${cellState}">
+            <select class="concept-select" data-id="${alumno.id}" data-score="${c.scoreKey}" title="${escapeHTML(c.titulo)}"${disabled}>
+              <option value=""></option>
+              ${options}
+            </select>
+          </td>`;
+        }
+        const max = isInclusion(alumno) ? 9 : c.max;
         return `<td class="score-cell ${cellState}">
-          <input type="number" inputmode="decimal" min="0" max="${max}" step="${c.step}" value="${value}" data-id="${alumno.id}" data-score="${c.scoreKey}" title="${c.titulo}"${disabled}>
+          <input type="number" inputmode="decimal" min="0" max="${max}" step="${c.step}" value="${value}" data-id="${alumno.id}" data-score="${c.scoreKey}" title="${escapeHTML(c.titulo)}"${disabled}>
         </td>`;
       }).join("")}
       <td class="calculated" data-total="puntaje">${totals.puntaje.toFixed(1)}</td>
@@ -719,8 +774,9 @@ function updateRenderedStudentRow(id) {
     const input = tr.querySelector(`[data-score="${CSS.escape(consigna.scoreKey)}"]`);
     if (!input) return;
     const cell = input.closest(".score-cell");
-    const max = isInclusion(alumno) ? 9 : consigna.max;
-    input.max = String(max);
+    if (input.type === "number") {
+      input.max = String(isInclusion(alumno) ? 9 : consigna.max);
+    }
     input.disabled = isAbsent(alumno) || currentLoadIsClosed();
     if (cell) cell.className = `score-cell ${scoreCellState(alumno, consigna)}`;
   });
@@ -762,6 +818,8 @@ function renderCriteriaEditor() {
   const groupedCourses = cursosPorNivel();
   const expiration = evaluationRows.find(row => row.FechaCaducidad)?.FechaCaducidad || "";
   const periodo = evaluationRows.find(row => row.PeriodoEvaluacion)?.PeriodoEvaluacion || "";
+  const escala = evaluationRows.find(row => normalizeText(row.EscalaConceptual))?.EscalaConceptual ||
+    escalaDeMateria(isNew ? newEvaluationPrefillMateria : editingMateria);
   const knownPeriods = unique(mapas.map(row => row.PeriodoEvaluacion));
   const knownMaterias = materiasDisponibles();
 
@@ -835,6 +893,10 @@ function renderCriteriaEditor() {
           ${knownPeriods.map(p => `<option value="${escapeHTML(p)}"></option>`).join("")}
         </datalist>
       </label>
+      <label>
+        Escala conceptual (para consignas de tipo conceptual)
+        <input id="criteriaEscala" type="text" placeholder="Logrado | En proceso | Iniciado" value="${escapeHTML(escala)}">
+      </label>
     </div>
     ${draftConsignas.map((c, index) => `
     <div class="criteria-row">
@@ -845,6 +907,13 @@ function renderCriteriaEditor() {
       <label>
         Contenido
         <input type="text" value="${escapeHTML(c.titulo)}" data-criteria="${index}" data-field="titulo" placeholder="Contenido de la consigna">
+      </label>
+      <label>
+        Tipo
+        <select data-criteria="${index}" data-field="tipo">
+          <option value="numerica"${c.tipo !== "conceptual" ? " selected" : ""}>Numérica</option>
+          <option value="conceptual"${c.tipo === "conceptual" ? " selected" : ""}>Conceptual</option>
+        </select>
       </label>
       <label>
         Competencia
@@ -931,6 +1000,11 @@ function upsertMapRowsFromCriteria() {
 
   const expiration = document.getElementById("criteriaExpiration")?.value || "";
   const periodoEvaluacion = normalizeText(document.getElementById("criteriaPeriod")?.value);
+  const escalaConceptual = normalizeEscalaInput(document.getElementById("criteriaEscala")?.value);
+  if (draftConsignas.some(c => c.tipo === "conceptual") && !escalaConceptual) {
+    alert("Hay consignas de tipo conceptual: completa la escala (ej. Logrado | En proceso | Iniciado).");
+    return null;
+  }
   const materiaId = base.MateriaID ||
     mapas.find(row => normalizeHeader(row.MateriaNombre) === normalizeHeader(materiaNombre))?.MateriaID ||
     materiaNombre.toUpperCase().slice(0, 3);
@@ -970,7 +1044,9 @@ function upsertMapRowsFromCriteria() {
         FechaCaducidad: expiration,
         Competencia: normalizeText(consigna.competencia),
         Eje: normalizeText(consigna.eje),
-        PeriodoEvaluacion: periodoEvaluacion
+        PeriodoEvaluacion: periodoEvaluacion,
+        TipoCalificacion: consigna.tipo === "conceptual" ? "conceptual" : "numerica",
+        EscalaConceptual: escalaConceptual
       };
       mapas.push(row);
       changedRows.push(row);
@@ -1068,7 +1144,9 @@ function applyImportedMapas(rows) {
     FechaCaducidad: row.fechacaducidad || row.caducidad || "",
     Competencia: row.competencia || "",
     Eje: row.eje || "",
-    PeriodoEvaluacion: row.periodoevaluacion || row.periodo || ""
+    PeriodoEvaluacion: row.periodoevaluacion || row.periodo || "",
+    TipoCalificacion: row.tipocalificacion || "",
+    EscalaConceptual: row.escalaconceptual || ""
   })).filter(row => row.MateriaNombre && row.EvaluacionNombre && row.ConsignaContenido);
 
   state = {};
@@ -1088,7 +1166,8 @@ function buildCargaRows(estado = "borrador") {
   currentRows().forEach(alumno => {
     activeConsignas().forEach(consigna => {
       const puntaje = alumno.scores[consigna.scoreKey] ?? "";
-      const parsedPuntaje = parseScoreValue(puntaje);
+      // Conceptual: el valor de la escala viaja como texto en Puntaje.
+      const parsedPuntaje = isConceptual(consigna) ? normalizeText(puntaje) : parseScoreValue(puntaje);
       if (!isFinal && !isAbsent(alumno) && puntaje === "") return;
       if (!isAbsent(alumno) && !scoreIsValid(puntaje, consigna, alumno)) return;
       data.push({
@@ -1167,7 +1246,8 @@ function applyCargaRows(rows) {
   function applyCargaValue(alumno, consigna, row) {
     if (!alumno || !consigna) return 0;
     const puntaje = row.Puntaje ?? row.puntaje ?? "";
-    alumno.scores[consigna.scoreKey] = puntaje === "" ? "" : String(puntaje).replace(",", ".");
+    alumno.scores[consigna.scoreKey] = puntaje === "" ? "" :
+      (isConceptual(consigna) ? normalizeText(puntaje) : String(puntaje).replace(",", "."));
     alumno.estadoAlumno = normalizeEstadoAlumno(row.EstadoAlumno || row.estadoalumno || alumno.estadoAlumno || "Presente");
     alumno.pudoResolver = row.PudoResolver || row.pudoresolver || alumno.pudoResolver;
     alumno.observacion = row.Observacion || row.observacion || alumno.observacion;
@@ -1984,7 +2064,7 @@ function exportVisibleGrid() {
   if (criteria.some(c => c.eje)) {
     extraRows.push(["", "Eje", "", ...criteria.map(c => c.eje || ""), "", "", ""]);
   }
-  const maxRow = ["", "Valor maximo", "", ...criteria.map(c => numericCell(c.max)), "", "", ""];
+  const maxRow = ["", "Valor maximo", "", ...criteria.map(c => isConceptual(c) ? "" : numericCell(c.max)), "", "", ""];
   const rows = currentRows().map((alumno, index) => {
     const totals = studentTotals(alumno);
     return [
@@ -2002,7 +2082,7 @@ function exportVisibleGrid() {
 }
 
 function exportMapas() {
-  const headers = ["MapaID", "MateriaID", "MateriaNombre", "EvaluacionID", "EvaluacionNombre", "Nivel", "Curso", "AnioLectivo", "ConsignaID", "ConsignaContenido", "ConsignaPuntajeMax", "ConsignaIncremento", "ConsignaOrden", "ConsignaActiva", "FechaCaducidad", "Competencia", "Eje", "PeriodoEvaluacion"];
+  const headers = ["MapaID", "MateriaID", "MateriaNombre", "EvaluacionID", "EvaluacionNombre", "Nivel", "Curso", "AnioLectivo", "ConsignaID", "ConsignaContenido", "ConsignaPuntajeMax", "ConsignaIncremento", "ConsignaOrden", "ConsignaActiva", "FechaCaducidad", "Competencia", "Eje", "PeriodoEvaluacion", "TipoCalificacion", "EscalaConceptual"];
   const rows = mapas.map(row => headers.map(header => row[header] ?? ""));
   const csv = [headers, ...rows].map(row => row.map(value => `"${String(value).replaceAll('"', '""')}"`).join(",")).join("\n");
   triggerDownload(csvBlob(csv), "mapas_actualizados.csv");
@@ -2305,7 +2385,7 @@ criteriaList.addEventListener("input", event => {
   const field = target.dataset.field;
   if (!Number.isInteger(index) || !field || !draftConsignas[index]) return;
   if (field === "active") draftConsignas[index][field] = target.checked;
-  else if (["titulo", "competencia", "eje"].includes(field)) draftConsignas[index][field] = target.value;
+  else if (["titulo", "competencia", "eje", "tipo"].includes(field)) draftConsignas[index][field] = target.value;
   else draftConsignas[index][field] = Number(target.value);
 });
 
@@ -2332,6 +2412,7 @@ function captureCriteriaFormState() {
     evaluacion: document.getElementById("criteriaEvaluacion")?.value,
     expiration: document.getElementById("criteriaExpiration")?.value,
     period: document.getElementById("criteriaPeriod")?.value,
+    escala: document.getElementById("criteriaEscala")?.value,
     courses: selectedCriteriaCourses()
   };
 }
@@ -2346,6 +2427,7 @@ function restoreCriteriaFormState(saved) {
   setValue("criteriaEvaluacion", saved.evaluacion);
   setValue("criteriaExpiration", saved.expiration);
   setValue("criteriaPeriod", saved.period);
+  setValue("criteriaEscala", saved.escala);
   const courseSet = new Set(saved.courses);
   criteriaList.querySelectorAll("[data-course]").forEach(input => {
     input.checked = courseSet.has(input.dataset.course);
