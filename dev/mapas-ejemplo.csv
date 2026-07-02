@@ -1,0 +1,7 @@
+MapaID,MateriaID,MateriaNombre,EvaluacionID,EvaluacionNombre,Nivel,Curso,AnioLectivo,ConsignaID,ConsignaContenido,ConsignaPuntajeMax,ConsignaIncremento,ConsignaOrden,ConsignaActiva,FechaCaducidad,Competencia,Eje,PeriodoEvaluacion
+MAP-2026-MAT-DIAG,MAT,Matematica,EVA-MAT-001,Diagnostico de numeracion,EP,*,2026,C01,Representacion de numeros,1,0.5,1,TRUE,,Resolucion de problemas,Numeracion,1er Trimestre
+MAP-2026-MAT-DIAG,MAT,Matematica,EVA-MAT-001,Diagnostico de numeracion,EP,*,2026,C02,Orden de la serie numerica,2,0.5,2,TRUE,,Resolucion de problemas,Numeracion,1er Trimestre
+MAP-2026-MAT-DIAG,MAT,Matematica,EVA-MAT-001,Diagnostico de numeracion,EP,*,2026,C03,Recta numerica,3,0.5,3,TRUE,,Resolucion de problemas,Numeracion,1er Trimestre
+MAP-2026-MAT-DIAG,MAT,Matematica,EVA-MAT-001,Diagnostico de numeracion,EP,*,2026,C04,Anterior y posterior,2,0.5,4,TRUE,,Comunicacion matematica,Operaciones,1er Trimestre
+MAP-2026-LEN-LECT,LEN,Lengua,EVA-LEN-001,Comprension lectora,EP,*,2026,C01,Identifica informacion explicita,2,0.5,1,TRUE,,Comprension lectora,Lectura,2do Trimestre
+MAP-2026-LEN-LECT,LEN,Lengua,EVA-LEN-001,Comprension lectora,EP,*,2026,C02,Reconoce personajes y acciones,2,0.5,2,TRUE,,Comprension lectora,Lectura,2do Trimestre

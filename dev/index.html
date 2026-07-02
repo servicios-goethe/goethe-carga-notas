@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Goethe Schule - Mapa de Aprendizajes</title>
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+  <div class="login-gate" id="loginGate">
+    <div class="login-panel">
+      <img src="logo.jpg" alt="Goethe Schule">
+      <h1>Mapa de Aprendizajes</h1>
+      <p>Inicia sesion con tu cuenta institucional para cargar y consultar informacion.</p>
+      <p class="login-help" id="loginHelp">Usa una cuenta @goethe.edu.ar. Si el selector de Google no aparece, proba abrir la app en una pestaña nueva.</p>
+      <div id="googleButtonWrap" class="google-button-wrap"></div>
+      <div class="login-actions">
+        <button id="gateLoginBtn" type="button" class="primary">Reintentar login</button>
+        <button id="openStandaloneBtn" type="button">Abrir en pestaña nueva</button>
+      </div>
+      <button id="gateConnectionBtn" class="config-action" type="button">Configurar conexion</button>
+    </div>
+  </div>
+
+  <header class="topbar">
+    <div class="brand">
+      <img src="logo.jpg" alt="Goethe Schule">
+      <div>
+        <h1>Mapa de Aprendizajes</h1>
+        <p>Registro de habilidades y evidencias por curso</p>
+      </div>
+    </div>
+    <div class="status-pill" id="saveStatus">Borrador sin guardar</div>
+  </header>
+
+  <main>
+    <section class="filters" aria-label="Filtros de carga">
+      <label>
+        Curso
+        <select id="courseFilter">
+          <option value="EP2A">2do Grado A</option>
+          <option value="EP2B">2do Grado B</option>
+          <option value="EP2C">2do Grado C</option>
+        </select>
+      </label>
+      <label>
+        Materia
+        <select id="subjectFilter">
+          <option>Matemática</option>
+          <option>Lengua</option>
+          <option>Conocimiento del mundo</option>
+        </select>
+      </label>
+      <label id="periodLabel" hidden>
+        Período
+        <select id="periodFilter"></select>
+      </label>
+      <label>
+        Evaluación
+        <select id="evaluationFilter">
+          <option>Diagnóstico de numeración</option>
+          <option>Trabajo práctico 1</option>
+          <option>Cierre de unidad</option>
+        </select>
+      </label>
+      <label>
+        Buscar alumno
+        <input id="searchInput" type="search" placeholder="Apellido o nombre">
+      </label>
+      <div class="actions">
+        <button id="connectionBtn" class="config-action" type="button">Conectar Sheets</button>
+        <button id="googleLoginBtn" class="config-action" type="button">Login Google</button>
+        <button id="loadMasterBtn" class="debug-action" type="button">Importar alumnos</button>
+        <button id="loadMapsBtn" class="debug-action" type="button">Importar mapas</button>
+        <button id="loadLoadsBtn" class="debug-action" type="button">Importar cargas</button>
+        <button id="exportMapsBtn" class="admin-action" type="button">Exportar mapas</button>
+        <button id="criteriaBtn" class="admin-action" type="button">Consignas</button>
+        <button id="exportBtn" type="button">Exportar grilla</button>
+        <button id="saveBtn" type="button" class="primary">Guardar borrador</button>
+        <button id="finishBtn" type="button" class="primary">Finalizar carga</button>
+      </div>
+    </section>
+
+    <section class="summary" aria-label="Resumen">
+      <div>
+        <span>Alumnos</span>
+        <strong id="studentCount">0</strong>
+      </div>
+      <div>
+        <span>Completos</span>
+        <strong id="completeCount">0</strong>
+      </div>
+      <div>
+        <span>Promedio</span>
+        <strong id="averageScore">0%</strong>
+      </div>
+      <div>
+        <span>Alertas</span>
+        <strong id="alertCount">0</strong>
+      </div>
+    </section>
+
+    <section class="grid-shell" aria-label="Mapa de aprendizajes">
+      <div class="grid-toolbar">
+        <div>
+          <strong id="gridTitle">2do Grado A</strong>
+          <span id="gridSubtitle">Matemática · Diagnóstico de numeración</span>
+        </div>
+        <label class="toggle">
+          <input id="showIncomplete" type="checkbox">
+          Solo incompletos
+        </label>
+      </div>
+      <div class="table-wrap">
+        <table id="gradeTable">
+          <thead></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <input id="masterFile" type="file" accept=".csv" hidden>
+  <input id="mapsFile" type="file" accept=".csv" hidden>
+  <input id="loadsFile" type="file" accept=".csv" hidden>
+  <div class="modal-backdrop" id="connectionModal" hidden>
+    <section class="modal modal-small" role="dialog" aria-modal="true" aria-labelledby="connectionTitle">
+      <header class="modal-header">
+        <div>
+          <h2 id="connectionTitle">Conectar Google Sheets</h2>
+          <p>Pega la URL del Web App de Apps Script para sincronizar datos reales.</p>
+        </div>
+        <button id="closeConnectionBtn" type="button" class="icon-btn" aria-label="Cerrar">x</button>
+      </header>
+      <div class="connection-body">
+        <label>
+          URL Apps Script
+          <input id="scriptUrlInput" type="url" placeholder="https://script.google.com/macros/s/.../exec">
+        </label>
+        <label>
+          Google Client ID
+          <input id="googleClientIdInput" type="text" placeholder="000000000000-xxxx.apps.googleusercontent.com">
+        </label>
+        <div class="connection-actions">
+          <button id="syncSheetsBtn" type="button">Sincronizar maestros</button>
+          <button id="saveConnectionBtn" type="button" class="primary">Guardar conexión</button>
+        </div>
+      </div>
+    </section>
+  </div>
+  <div class="modal-backdrop" id="saveModal" hidden>
+    <section class="modal modal-small" role="dialog" aria-modal="true" aria-labelledby="saveModalTitle">
+      <header class="modal-header">
+        <div>
+          <h2 id="saveModalTitle">Guardando borrador</h2>
+          <p id="saveModalMessage">Enviando registros a Google Sheets...</p>
+        </div>
+      </header>
+      <div class="connection-body">
+        <div class="saving-indicator" id="saveModalIndicator">Procesando</div>
+        <div class="connection-actions">
+          <button id="closeSaveModalBtn" type="button" class="primary" hidden>Aceptar</button>
+        </div>
+      </div>
+    </section>
+  </div>
+  <div class="modal-backdrop" id="criteriaModal" hidden>
+    <section class="modal" role="dialog" aria-modal="true" aria-labelledby="criteriaTitle">
+      <header class="modal-header">
+        <div>
+          <h2 id="criteriaTitle">Consignas de evaluación</h2>
+          <p>Configura consignas, cursos alcanzados y vigencia del mapa.</p>
+        </div>
+        <button id="closeCriteriaBtn" type="button" class="icon-btn" aria-label="Cerrar">x</button>
+      </header>
+      <div class="criteria-list" id="criteriaList"></div>
+      <footer class="modal-footer">
+        <button id="addCriteriaBtn" type="button">Agregar consigna</button>
+        <button id="applyCriteriaBtn" type="button" class="primary">Aplicar cambios</button>
+      </footer>
+    </section>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
