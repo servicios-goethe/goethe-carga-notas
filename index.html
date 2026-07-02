@@ -53,6 +53,10 @@
           <option>Conocimiento del mundo</option>
         </select>
       </label>
+      <label id="periodLabel" hidden>
+        Período
+        <select id="periodFilter"></select>
+      </label>
       <label>
         Evaluación
         <select id="evaluationFilter">
@@ -173,6 +177,7 @@
       </header>
       <div class="criteria-list" id="criteriaList"></div>
       <footer class="modal-footer">
+        <button id="newEvaluationBtn" type="button">Nueva evaluación</button>
         <button id="addCriteriaBtn" type="button">Agregar consigna</button>
         <button id="applyCriteriaBtn" type="button" class="primary">Aplicar cambios</button>
       </footer>

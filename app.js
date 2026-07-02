@@ -21,7 +21,11 @@ const demoMapas = [
   ["MAP-EP2-MAT-DIAG", "MAT", "Matematica", "EVA-001", "Diagnostico de numeracion", "EP2B", "2026", "C01", "Representacion de numeros", "1", "0.5", "1", "TRUE"],
   ["MAP-EP2-MAT-DIAG", "MAT", "Matematica", "EVA-001", "Diagnostico de numeracion", "EP2B", "2026", "C02", "Orden de la serie numerica", "2", "0.5", "2", "TRUE"]
 ].map(([MapaID, MateriaID, MateriaNombre, EvaluacionID, EvaluacionNombre, Curso, AnioLectivo, ConsignaID, ConsignaContenido, ConsignaPuntajeMax, ConsignaIncremento, ConsignaOrden, ConsignaActiva]) => ({
-  MapaID, MateriaID, MateriaNombre, EvaluacionID, EvaluacionNombre, Nivel: "EP", Curso, AnioLectivo, ConsignaID, ConsignaContenido, ConsignaPuntajeMax, ConsignaIncremento, ConsignaOrden, ConsignaActiva, FechaCaducidad: ""
+  MapaID, MateriaID, MateriaNombre, EvaluacionID, EvaluacionNombre, Nivel: "EP", Curso, AnioLectivo, ConsignaID, ConsignaContenido, ConsignaPuntajeMax, ConsignaIncremento, ConsignaOrden, ConsignaActiva, FechaCaducidad: "",
+  // Jerarquia demo: consignas 1-4 eje Numeracion, 5-8 eje Operaciones.
+  Competencia: "Resolucion de problemas",
+  Eje: Number(ConsignaOrden) <= 4 ? "Numeracion" : "Operaciones",
+  PeriodoEvaluacion: "1er Trimestre"
 }));
 
 let alumnos = [];
@@ -61,6 +65,8 @@ const table = document.getElementById("gradeTable");
 const courseFilter = document.getElementById("courseFilter");
 const subjectFilter = document.getElementById("subjectFilter");
 const evaluationFilter = document.getElementById("evaluationFilter");
+const periodFilter = document.getElementById("periodFilter");
+const periodLabel = document.getElementById("periodLabel");
 const searchInput = document.getElementById("searchInput");
 const showIncomplete = document.getElementById("showIncomplete");
 const criteriaModal = document.getElementById("criteriaModal");
@@ -202,6 +208,35 @@ function currentEvaluationId() {
   )?.EvaluacionID || evaluacion;
 }
 
+const ALL_PERIODS = "__todos__";
+
+function selectedPeriod() {
+  const value = periodFilter?.value || "";
+  return value === ALL_PERIODS ? "" : value;
+}
+
+// Una fila sin periodo aplica a todos los periodos (compatibilidad con mapas
+// anteriores a la jerarquia Competencia/Eje/Periodo).
+function periodMatches(row) {
+  const periodo = selectedPeriod();
+  return !periodo || !row.PeriodoEvaluacion || row.PeriodoEvaluacion === periodo;
+}
+
+function populatePeriodFilter(periodos, selectedValue) {
+  if (!periodLabel || !periodFilter) return;
+  if (!periodos.length) {
+    periodFilter.innerHTML = "";
+    periodLabel.hidden = true;
+    return;
+  }
+  periodLabel.hidden = false;
+  const options = [[ALL_PERIODS, "Todos"], ...periodos.map(p => [p, p])];
+  periodFilter.innerHTML = options
+    .map(([value, text]) => `<option value="${escapeHTML(value)}">${escapeHTML(text)}</option>`)
+    .join("");
+  if (selectedValue && periodos.includes(selectedValue)) periodFilter.value = selectedValue;
+}
+
 function stateKey() {
   const { curso, materia, evaluacion } = selectedContext();
   return `${curso}||${materia}||${evaluacion}`;
@@ -271,14 +306,50 @@ function mapRowToConsigna(row, index) {
     titulo: normalizeText(row.consignacontenido) || `Consigna ${index + 1}`,
     max: Number(String(row.consignapuntajemax).replace(",", ".")) || 1,
     step: Number(String(row.consignaincremento).replace(",", ".")) || 0.5,
-    active: !["false", "0", "no", "n"].includes(normalizeText(row.consignaactiva).toLowerCase())
+    active: !["false", "0", "no", "n"].includes(normalizeText(row.consignaactiva).toLowerCase()),
+    competencia: normalizeText(row.competencia),
+    eje: normalizeText(row.eje),
+    tipo: normalizeHeader(row.tipocalificacion) === "conceptual" ? "conceptual" : "numerica",
+    escala: normalizeText(row.escalaconceptual)
   };
+}
+
+// Calificacion conceptual (KG y otros niveles): la consigna se evalua con una
+// escala de valores definida por materia (ej. Logrado|En proceso|Iniciado) en
+// vez de puntaje numerico. No participa de totales ni porcentajes.
+function isConceptual(consigna) {
+  return consigna.tipo === "conceptual";
+}
+
+function escalaValues(consigna) {
+  return String(consigna.escala || "")
+    .split("|")
+    .map(normalizeText)
+    .filter(Boolean);
+}
+
+// Normaliza la escala tipeada por el admin: acepta | , o ; como separador.
+function normalizeEscalaInput(value) {
+  return String(value || "")
+    .split(/[|,;]/)
+    .map(normalizeText)
+    .filter(Boolean)
+    .join("|");
+}
+
+// La escala es editable POR MATERIA: toma la ya definida en cualquier mapa de
+// esa materia como valor por defecto.
+function escalaDeMateria(materiaNombre) {
+  return mapas.find(row =>
+    normalizeHeader(row.MateriaNombre) === normalizeHeader(materiaNombre) &&
+    normalizeText(row.EscalaConceptual)
+  )?.EscalaConceptual || "";
 }
 
 function syncConsignasFromSelection() {
   const { curso, materia, evaluacion } = selectedContext();
   const rows = mapas
-    .filter(row => rowAppliesToCourse(row, curso) && rowIsActiveByDate(row) && row.MateriaNombre === materia && row.EvaluacionNombre === evaluacion)
+    .filter(row => rowAppliesToCourse(row, curso) && rowIsActiveByDate(row) && row.MateriaNombre === materia && row.EvaluacionNombre === evaluacion && periodMatches(row))
     .sort((a, b) => Number(a.ConsignaOrden) - Number(b.ConsignaOrden));
 
   consignas = rows.map((row, index) => mapRowToConsigna({
@@ -287,12 +358,16 @@ function syncConsignasFromSelection() {
     consignacontenido: row.ConsignaContenido,
     consignapuntajemax: row.ConsignaPuntajeMax,
     consignaincremento: row.ConsignaIncremento,
-    consignaactiva: row.ConsignaActiva
+    consignaactiva: row.ConsignaActiva,
+    competencia: row.Competencia,
+    eje: row.Eje,
+    tipocalificacion: row.TipoCalificacion,
+    escalaconceptual: row.EscalaConceptual
   }, index));
 }
 
-function validCriteriaConfig() {
-  return consignas.every(c =>
+function validCriteriaConfig(list = consignas) {
+  return list.every(c =>
     Number.isFinite(c.id) &&
     Number.isFinite(c.max) &&
     Number.isFinite(c.step) &&
@@ -303,12 +378,101 @@ function validCriteriaConfig() {
   );
 }
 
+// --- Editor de consignas ---
+// El modal trabaja sobre un BORRADOR (draftConsignas): "Aplicar cambios"
+// confirma, cerrar descarta. Antes editaba el array global en vivo y cerrar
+// sin aplicar dejaba la grilla modificada.
+// Modo "edit": edita la evaluacion seleccionada en los filtros.
+// Modo "new": crea una evaluacion nueva (y materia nueva si hace falta)
+// enteramente desde el front; se persiste con el mismo upsertMapas.
+let draftConsignas = [];
+let criteriaMode = "edit";
+// Seleccion PROPIA del modal (independiente de los filtros de carga): el
+// admin administra cualquier materia/evaluacion sin mover la grilla.
+let editingMateria = "";
+let editingEvaluacion = "";
+// Precarga del formulario "nueva evaluacion" (usada por Duplicar).
+let newEvaluationPrefillMateria = "";
+let newEvaluationPrefillNombre = "";
+
+// Consignas de una evaluacion, para cualquier materia/evaluacion (sin
+// depender del curso seleccionado): unifica por ConsignaID entre cursos.
+function consignasForEvaluation(materiaNombre, evaluacionNombre) {
+  const rows = mapas.filter(row =>
+    row.MateriaNombre === materiaNombre &&
+    row.EvaluacionNombre === evaluacionNombre
+  );
+  const byId = new Map();
+  rows.forEach(row => {
+    const key = normalizeText(row.ConsignaID);
+    if (!byId.has(key)) byId.set(key, row);
+  });
+  return [...byId.values()]
+    .sort((a, b) => Number(a.ConsignaOrden) - Number(b.ConsignaOrden))
+    .map((row, index) => mapRowToConsigna({
+      consignaorden: row.ConsignaOrden,
+      consignaid: row.ConsignaID,
+      consignacontenido: row.ConsignaContenido,
+      consignapuntajemax: row.ConsignaPuntajeMax,
+      consignaincremento: row.ConsignaIncremento,
+      consignaactiva: row.ConsignaActiva,
+      competencia: row.Competencia,
+      eje: row.Eje,
+      tipocalificacion: row.TipoCalificacion,
+      escalaconceptual: row.EscalaConceptual
+    }, index));
+}
+
+function materiasDisponibles() {
+  return unique(mapas.map(row => row.MateriaNombre)).sort(naturalSorter.compare);
+}
+
+function evaluacionesDeMateria(materiaNombre) {
+  return unique(mapas
+    .filter(row => row.MateriaNombre === materiaNombre)
+    .map(row => row.EvaluacionNombre));
+}
+
+function blankConsigna(orden) {
+  return {
+    id: orden,
+    scoreKey: `NEW-${Date.now()}-${orden}`,
+    consignaId: "",
+    titulo: "",
+    max: 1,
+    step: 0.5,
+    active: true,
+    competencia: "",
+    eje: "",
+    tipo: "numerica",
+    escala: ""
+  };
+}
+
+// Asigna ConsignaID C01, C02... a las consignas nuevas del borrador,
+// respetando los IDs ya usados (los existentes no cambian: las cargas
+// guardadas los referencian).
+function assignConsignaIds(list) {
+  const used = new Set(list.map(c => c.consignaId).filter(Boolean));
+  let next = 1;
+  list.forEach(consigna => {
+    if (consigna.consignaId) return;
+    while (used.has(`C${String(next).padStart(2, "0")}`)) next += 1;
+    consigna.consignaId = `C${String(next).padStart(2, "0")}`;
+    used.add(consigna.consignaId);
+  });
+}
+
 function alumnoNombre(alumno) {
   return `${alumno.Apellido}, ${alumno.Nombres}`.replace(/^,\s*/, "").trim();
 }
 
 function alumnosDelCurso() {
-  return alumnos.filter(alumno => alumno.Curso === courseFilter.value);
+  // Orden alfabetico (Apellido, Nombres) con collator español: independiente
+  // del orden en que esten cargados en la solapa Alumnos.
+  return alumnos
+    .filter(alumno => alumno.Curso === courseFilter.value)
+    .sort((a, b) => naturalSorter.compare(alumnoNombre(a), alumnoNombre(b)));
 }
 
 function sortCourses(courses) {
@@ -415,25 +579,64 @@ function refreshFilters({ keepSelection = true } = {}) {
     .map(row => row.MateriaNombre));
   populateSelect(subjectFilter, materias, keepSelection ? previous.materia : "");
 
-  const evaluaciones = unique(mapas
+  const periodos = unique(mapas
     .filter(row => rowAppliesToCourse(row, courseFilter.value) && rowIsActiveByDate(row) && row.MateriaNombre === subjectFilter.value)
+    .map(row => row.PeriodoEvaluacion));
+  populatePeriodFilter(periodos, keepSelection ? selectedPeriod() : "");
+
+  const evaluaciones = unique(mapas
+    .filter(row => rowAppliesToCourse(row, courseFilter.value) && rowIsActiveByDate(row) && row.MateriaNombre === subjectFilter.value && periodMatches(row))
     .map(row => row.EvaluacionNombre));
   populateSelect(evaluationFilter, evaluaciones, keepSelection ? previous.evaluacion : "");
 
   syncConsignasFromSelection();
 }
 
+// Celdas de agrupacion: fusiona valores adyacentes iguales con colspan
+// (Competencia y Eje son niveles superiores de la consigna).
+function groupedHeaderCells(values, className) {
+  const cells = [];
+  let index = 0;
+  while (index < values.length) {
+    let span = 1;
+    while (index + span < values.length && values[index + span] === values[index]) span += 1;
+    cells.push(`<th class="${className}" colspan="${span}" title="${escapeHTML(values[index])}">${escapeHTML(values[index])}</th>`);
+    index += span;
+  }
+  return cells.join("");
+}
+
+function groupRowHTML(label, values, className) {
+  return `
+    <tr class="group-row">
+      <th class="sticky-col header-empty"></th>
+      <th class="student-col group-label">${escapeHTML(label)}</th>
+      <th class="header-empty"></th>
+      ${groupedHeaderCells(values, className)}
+      <th class="header-empty"></th>
+      <th class="header-empty"></th>
+      <th class="header-empty"></th>
+    </tr>
+  `;
+}
+
 function renderHeader() {
   const thead = table.querySelector("thead");
   const visible = activeConsignas();
-  const maxRow = visible.map(c => `<th class="criteria-max">${escapeHTML(c.max)}</th>`).join("");
+  const maxRow = visible.map(c => `<th class="criteria-max">${isConceptual(c) ? "—" : escapeHTML(c.max)}</th>`).join("");
   const emptySummaryRow = Array.from({ length: 3 }, () => `<th class="header-empty"></th>`).join("");
   const titleRow = visible.map(c => `
     <th class="criteria-title" title="${escapeHTML(c.titulo)}">
       <span class="criteria-name">${escapeHTML(c.titulo)}</span>
     </th>
   `).join("");
+  const competencias = visible.map(c => c.competencia || "");
+  const ejes = visible.map(c => c.eje || "");
+  const competenciaRow = competencias.some(Boolean) ? groupRowHTML("Competencia", competencias, "criteria-group competencia-cell") : "";
+  const ejeRow = ejes.some(Boolean) ? groupRowHTML("Eje", ejes, "criteria-group eje-cell") : "";
   thead.innerHTML = `
+    ${competenciaRow}
+    ${ejeRow}
     <tr>
       <th class="sticky-col">Nr.</th>
       <th class="student-col student-head">Nombre</th>
@@ -443,7 +646,7 @@ function renderHeader() {
       <th>Calificacion</th>
       <th>Observaciones</th>
     </tr>
-    <tr>
+    <tr class="max-row">
       <th class="sticky-col header-empty"></th>
       <th class="student-col max-label">Valor maximo</th>
       <th class="header-empty"></th>
@@ -455,6 +658,7 @@ function renderHeader() {
 
 function scoreIsValid(value, consigna, alumno = null) {
   if (value === "") return true;
+  if (isConceptual(consigna)) return escalaValues(consigna).includes(normalizeText(value));
   const number = parseScoreValue(value);
   if (number === null) return false;
   if (number === 9) return Boolean(alumno && isInclusion(alumno));
@@ -480,11 +684,14 @@ function studentTotals(alumno) {
 
   let alertas = 0;
   let maximo = 0;
+  // Solo las consignas numericas suman al puntaje/porcentaje; las
+  // conceptuales cuentan para completitud y alertas pero no para totales.
   const scores = activeConsignas().map((consigna) => {
     const value = alumno.scores[consigna.scoreKey] ?? "";
-    const number = parseScoreValue(value);
     const valid = scoreIsValid(value, consigna, alumno);
     if (!valid) alertas += 1;
+    if (isConceptual(consigna)) return 0;
+    const number = parseScoreValue(value);
     if (number !== 9) maximo += consigna.max;
     return valid && number !== null ? number : 0;
   });
@@ -508,7 +715,11 @@ function renderBody() {
   const query = searchInput.value.trim().toLowerCase();
   const tbody = table.querySelector("tbody");
   const onlyIncomplete = showIncomplete.checked;
-  const closed = currentLoadIsClosed();
+  // Bloqueada si la carga esta cerrada O si los registros del curso todavia
+  // no llegaron del backend (evita tipear sobre datos incompletos).
+  const pending = cargasPendingForCourse();
+  const closed = currentLoadIsClosed() || pending;
+  tableWrap?.classList.toggle("loading-cargas", pending);
   tbody.innerHTML = "";
 
   state[key].forEach((alumno, index) => {
@@ -530,11 +741,22 @@ function renderBody() {
       </td>
       ${activeConsignas().map((c) => {
         const value = alumno.scores[c.scoreKey] ?? "";
-        const max = isInclusion(alumno) ? 9 : c.max;
         const disabled = isAbsent(alumno) || closed ? " disabled" : "";
         const cellState = scoreCellState(alumno, c);
+        if (isConceptual(c)) {
+          const options = escalaValues(c).map(option =>
+            `<option value="${escapeHTML(option)}"${normalizeText(value) === option ? " selected" : ""}>${escapeHTML(option)}</option>`
+          ).join("");
+          return `<td class="score-cell ${cellState}">
+            <select class="concept-select" data-id="${alumno.id}" data-score="${c.scoreKey}" title="${escapeHTML(c.titulo)}"${disabled}>
+              <option value=""></option>
+              ${options}
+            </select>
+          </td>`;
+        }
+        const max = isInclusion(alumno) ? 9 : c.max;
         return `<td class="score-cell ${cellState}">
-          <input type="number" inputmode="decimal" min="0" max="${max}" step="${c.step}" value="${value}" data-id="${alumno.id}" data-score="${c.scoreKey}" title="${c.titulo}"${disabled}>
+          <input type="number" inputmode="decimal" min="0" max="${max}" step="${c.step}" value="${value}" data-id="${alumno.id}" data-score="${c.scoreKey}" title="${escapeHTML(c.titulo)}"${disabled}>
         </td>`;
       }).join("")}
       <td class="calculated" data-total="puntaje">${totals.puntaje.toFixed(1)}</td>
@@ -560,9 +782,10 @@ function updateRenderedStudentRow(id) {
     const input = tr.querySelector(`[data-score="${CSS.escape(consigna.scoreKey)}"]`);
     if (!input) return;
     const cell = input.closest(".score-cell");
-    const max = isInclusion(alumno) ? 9 : consigna.max;
-    input.max = String(max);
-    input.disabled = isAbsent(alumno) || currentLoadIsClosed();
+    if (input.type === "number") {
+      input.max = String(isInclusion(alumno) ? 9 : consigna.max);
+    }
+    input.disabled = isAbsent(alumno) || currentLoadIsClosed() || cargasPendingForCourse();
     if (cell) cell.className = `score-cell ${scoreCellState(alumno, consigna)}`;
   });
   const puntajeCell = tr.querySelector('[data-total="puntaje"]');
@@ -584,7 +807,8 @@ function updateSummary() {
   document.getElementById("alertCount").textContent = alertas;
   document.getElementById("gridTitle").textContent = courseFilter.value || "Sin curso";
   const closed = currentLoadIsClosed();
-  document.getElementById("gridSubtitle").textContent = `${subjectFilter.value || "Sin materia"} - ${evaluationFilter.value || "Sin evaluacion"}${closed ? " - carga finalizada" : ""}`;
+  const pending = cargasPendingForCourse();
+  document.getElementById("gridSubtitle").textContent = `${subjectFilter.value || "Sin materia"} - ${evaluationFilter.value || "Sin evaluacion"}${closed ? " - carga finalizada" : ""}${pending ? " - cargando registros..." : ""}`;
 }
 
 function currentRows() {
@@ -594,16 +818,59 @@ function currentRows() {
 
 function renderCriteriaEditor() {
   const { curso } = selectedContext();
-  const evaluationRows = mapas.filter(row =>
-    row.MateriaNombre === subjectFilter.value &&
-    row.EvaluacionNombre === evaluationFilter.value &&
-    row.EvaluacionID === currentEvaluationId()
+  const isNew = criteriaMode === "new";
+  const evaluationRows = isNew ? [] : mapas.filter(row =>
+    row.MateriaNombre === editingMateria &&
+    row.EvaluacionNombre === editingEvaluacion
   );
   const selectedCourses = unique(evaluationRows.map(row => row.Curso).filter(Boolean));
   const groupedCourses = cursosPorNivel();
   const expiration = evaluationRows.find(row => row.FechaCaducidad)?.FechaCaducidad || "";
+  const periodo = evaluationRows.find(row => row.PeriodoEvaluacion)?.PeriodoEvaluacion || "";
+  const knownEscalas = unique(mapas.map(row => normalizeText(row.EscalaConceptual)));
+  const knownPeriods = unique(mapas.map(row => row.PeriodoEvaluacion));
+  const knownMaterias = materiasDisponibles();
+
+  const title = document.getElementById("criteriaTitle");
+  if (title) title.textContent = isNew ? "Nueva evaluación" : "Administrar mapas";
+
+  const headerFields = isNew ? `
+    <div class="criteria-config">
+      <label>
+        Materia (existente o nueva)
+        <input id="criteriaMateria" type="text" list="materiaSuggestions" placeholder="Matemática" value="${escapeHTML(newEvaluationPrefillMateria || "")}">
+        <datalist id="materiaSuggestions">
+          ${knownMaterias.map(m => `<option value="${escapeHTML(m)}"></option>`).join("")}
+        </datalist>
+      </label>
+      <label>
+        Nombre de la evaluación
+        <input id="criteriaEvaluacion" type="text" placeholder="Evaluación Final" value="${escapeHTML(newEvaluationPrefillNombre || "")}">
+      </label>
+    </div>
+  ` : `
+    <div class="criteria-config">
+      <label>
+        Materia
+        <select id="criteriaMateriaSelect">
+          ${knownMaterias.map(m => `<option value="${escapeHTML(m)}"${m === editingMateria ? " selected" : ""}>${escapeHTML(m)}</option>`).join("")}
+        </select>
+      </label>
+      <label>
+        Evaluación
+        <select id="criteriaEvaluacionSelect">
+          ${evaluacionesDeMateria(editingMateria).map(e => `<option value="${escapeHTML(e)}"${e === editingEvaluacion ? " selected" : ""}>${escapeHTML(e)}</option>`).join("")}
+        </select>
+      </label>
+      <label>
+        &nbsp;
+        <button id="duplicateEvaluationBtn" type="button">Duplicar como nueva</button>
+      </label>
+    </div>
+  `;
 
   criteriaList.innerHTML = `
+    ${headerFields}
     <div class="criteria-config">
       <label>
         Aplicar a cursos
@@ -627,8 +894,18 @@ function renderCriteriaEditor() {
         Fecha de caducidad
         <input id="criteriaExpiration" type="date" value="${expiration}">
       </label>
+      <label>
+        Período de evaluación
+        <input id="criteriaPeriod" type="text" list="periodSuggestions" placeholder="1er Trimestre" value="${escapeHTML(periodo)}">
+        <datalist id="periodSuggestions">
+          ${knownPeriods.map(p => `<option value="${escapeHTML(p)}"></option>`).join("")}
+        </datalist>
+      </label>
     </div>
-    ${consignas.map((c, index) => `
+    <datalist id="escalaSuggestions">
+      ${knownEscalas.map(e => `<option value="${escapeHTML(e)}"></option>`).join("")}
+    </datalist>
+    ${draftConsignas.map((c, index) => `
     <div class="criteria-row">
       <label>
         Visible
@@ -636,8 +913,29 @@ function renderCriteriaEditor() {
       </label>
       <label>
         Contenido
-        <input type="text" value="${c.titulo}" data-criteria="${index}" data-field="titulo">
+        <input type="text" value="${escapeHTML(c.titulo)}" data-criteria="${index}" data-field="titulo" placeholder="Contenido de la consigna">
       </label>
+      <label>
+        Tipo
+        <select data-criteria="${index}" data-field="tipo">
+          <option value="numerica"${c.tipo !== "conceptual" ? " selected" : ""}>Numérica</option>
+          <option value="conceptual"${c.tipo === "conceptual" ? " selected" : ""}>Conceptual</option>
+        </select>
+      </label>
+      <label>
+        Competencia
+        <input type="text" value="${escapeHTML(c.competencia || "")}" data-criteria="${index}" data-field="competencia" placeholder="Nivel superior">
+      </label>
+      <label>
+        Eje
+        <input type="text" value="${escapeHTML(c.eje || "")}" data-criteria="${index}" data-field="eje" placeholder="Nivel superior">
+      </label>
+      ${isConceptual(c) ? `
+      <label class="escala-field">
+        Escala (separada por comas)
+        <input type="text" list="escalaSuggestions" value="${escapeHTML(c.escala || "")}" data-criteria="${index}" data-field="escala" placeholder="Logrado, En proceso, Iniciado">
+      </label>
+      ` : `
       <label>
         Puntaje max.
         <input type="number" min="0.5" step="0.5" value="${c.max}" data-criteria="${index}" data-field="max">
@@ -650,6 +948,7 @@ function renderCriteriaEditor() {
         Orden
         <input type="number" min="1" step="1" value="${c.id}" data-criteria="${index}" data-field="id">
       </label>
+      `}
     </div>
   `).join("")}
   `;
@@ -659,26 +958,77 @@ function selectedCriteriaCourses() {
   return [...criteriaList.querySelectorAll("[data-course]:checked")].map(input => input.dataset.course);
 }
 
+function evaluationExists(materiaNombre, evaluacionNombre) {
+  return mapas.some(row =>
+    normalizeHeader(row.MateriaNombre) === normalizeHeader(materiaNombre) &&
+    normalizeHeader(row.EvaluacionNombre) === normalizeHeader(evaluacionNombre)
+  );
+}
+
+function uniqueEvaluacionId(evaluacionNombre) {
+  const baseId = evaluacionNombre.toUpperCase().replace(/\s+/g, "-");
+  let id = baseId;
+  let suffix = 2;
+  while (mapas.some(row => row.EvaluacionID === id)) {
+    id = `${baseId}-${suffix}`;
+    suffix += 1;
+  }
+  return id;
+}
+
 function upsertMapRowsFromCriteria() {
+  const isNew = criteriaMode === "new";
   const selectedCourses = selectedCriteriaCourses();
   if (!selectedCourses.length) {
-    alert("Selecciona al menos un curso.");
+    showNotice("Selecciona al menos un curso.");
     return null;
   }
 
+  let materiaNombre;
+  let evaluacionNombre;
+  let base = {};
+
+  if (isNew) {
+    materiaNombre = normalizeText(document.getElementById("criteriaMateria")?.value);
+    evaluacionNombre = normalizeText(document.getElementById("criteriaEvaluacion")?.value);
+    if (!materiaNombre || !evaluacionNombre) {
+      showNotice("Completa la materia y el nombre de la evaluación.");
+      return null;
+    }
+    if (evaluationExists(materiaNombre, evaluacionNombre)) {
+      showNotice(`Ya existe "${evaluacionNombre}" en ${materiaNombre}. Seleccionala en los filtros para editarla.`);
+      return null;
+    }
+  } else {
+    materiaNombre = editingMateria;
+    evaluacionNombre = editingEvaluacion;
+    if (!materiaNombre || !evaluacionNombre) {
+      showNotice("Selecciona una materia y una evaluación para editar.");
+      return null;
+    }
+    base = mapas.find(row =>
+      row.MateriaNombre === materiaNombre &&
+      row.EvaluacionNombre === evaluacionNombre
+    ) || {};
+  }
+
   const expiration = document.getElementById("criteriaExpiration")?.value || "";
-  const baseRows = mapas.filter(row =>
-    row.MateriaNombre === subjectFilter.value &&
-    row.EvaluacionNombre === evaluationFilter.value &&
-    row.EvaluacionID === currentEvaluationId()
-  );
-  const base = baseRows[0] || {};
-  const materiaNombre = subjectFilter.value;
-  const evaluacionNombre = evaluationFilter.value;
-  const materiaId = base.MateriaID || materiaNombre.toUpperCase().slice(0, 3);
-  const evaluacionId = base.EvaluacionID || evaluacionNombre.toUpperCase().replace(/\s+/g, "-");
+  const periodoEvaluacion = normalizeText(document.getElementById("criteriaPeriod")?.value);
+  const sinEscala = draftConsignas
+    .filter(c => c.tipo === "conceptual" && !normalizeEscalaInput(c.escala))
+    .map(c => `Consigna ${c.id}`);
+  if (sinEscala.length) {
+    showNotice(`Completa la escala de: ${sinEscala.join(", ")} (ej. Logrado, En proceso, Iniciado).`, "Falta la escala conceptual");
+    return null;
+  }
+  const materiaId = base.MateriaID ||
+    mapas.find(row => normalizeHeader(row.MateriaNombre) === normalizeHeader(materiaNombre))?.MateriaID ||
+    materiaNombre.toUpperCase().slice(0, 3);
+  const evaluacionId = base.EvaluacionID || uniqueEvaluacionId(evaluacionNombre);
   const mapaId = base.MapaID || `MAP-${evaluacionId}`;
   const anioLectivo = base.AnioLectivo || String(new Date().getFullYear());
+
+  assignConsignaIds(draftConsignas);
 
   const targetCourseSet = new Set(selectedCourses);
   mapas = mapas.filter(row => !(
@@ -691,7 +1041,7 @@ function upsertMapRowsFromCriteria() {
   const changedRows = [];
 
   selectedCourses.forEach(course => {
-    consignas.forEach((consigna, index) => {
+    draftConsignas.forEach((consigna, index) => {
       const row = {
         MapaID: mapaId,
         MateriaID: materiaId,
@@ -701,24 +1051,32 @@ function upsertMapRowsFromCriteria() {
         Nivel: nivelFromCurso(course),
         Curso: course,
         AnioLectivo: anioLectivo,
-        ConsignaID: consigna.consignaId || String(consigna.scoreKey),
+        ConsignaID: consigna.consignaId,
         ConsignaContenido: consigna.titulo,
         ConsignaPuntajeMax: String(consigna.max),
         ConsignaIncremento: String(consigna.step),
         ConsignaOrden: String(index + 1),
         ConsignaActiva: consigna.active ? "TRUE" : "FALSE",
-        FechaCaducidad: expiration
+        FechaCaducidad: expiration,
+        Competencia: normalizeText(consigna.competencia),
+        Eje: normalizeText(consigna.eje),
+        PeriodoEvaluacion: periodoEvaluacion,
+        TipoCalificacion: consigna.tipo === "conceptual" ? "conceptual" : "numerica",
+        EscalaConceptual: consigna.tipo === "conceptual" ? normalizeEscalaInput(consigna.escala) : ""
       };
       mapas.push(row);
       changedRows.push(row);
     });
   });
 
-  return changedRows;
+  return { changedRows, materiaNombre, evaluacionNombre, courses: selectedCourses };
 }
 
-function normalizeConsignas() {
-  consignas = consignas.sort((a, b) => a.id - b.id);
+function sortConsignasByOrder(list) {
+  list.sort((a, b) => a.id - b.id);
+}
+
+function backfillScoreKeys() {
   Object.values(state).flat().forEach(alumno => {
     consignas.forEach(consigna => {
       if (!(consigna.scoreKey in alumno.scores)) alumno.scores[consigna.scoreKey] = "";
@@ -771,7 +1129,7 @@ function applyImportedAlumnos(rows) {
   const dnis = mapped.map(row => row.DNI);
   const duplicates = dnis.filter((dni, index) => dnis.indexOf(dni) !== index);
   if (duplicates.length) {
-    alert(`Hay DNI duplicados: ${unique(duplicates).join(", ")}`);
+    showNotice(`Hay DNI duplicados: ${unique(duplicates).join(", ")}`);
     return;
   }
 
@@ -799,7 +1157,12 @@ function applyImportedMapas(rows) {
     ConsignaIncremento: row.consignaincremento,
     ConsignaOrden: row.consignaorden,
     ConsignaActiva: row.consignaactiva || "TRUE",
-    FechaCaducidad: row.fechacaducidad || row.caducidad || ""
+    FechaCaducidad: row.fechacaducidad || row.caducidad || "",
+    Competencia: row.competencia || "",
+    Eje: row.eje || "",
+    PeriodoEvaluacion: row.periodoevaluacion || row.periodo || "",
+    TipoCalificacion: row.tipocalificacion || "",
+    EscalaConceptual: row.escalaconceptual || ""
   })).filter(row => row.MateriaNombre && row.EvaluacionNombre && row.ConsignaContenido);
 
   state = {};
@@ -819,7 +1182,8 @@ function buildCargaRows(estado = "borrador") {
   currentRows().forEach(alumno => {
     activeConsignas().forEach(consigna => {
       const puntaje = alumno.scores[consigna.scoreKey] ?? "";
-      const parsedPuntaje = parseScoreValue(puntaje);
+      // Conceptual: el valor de la escala viaja como texto en Puntaje.
+      const parsedPuntaje = isConceptual(consigna) ? normalizeText(puntaje) : parseScoreValue(puntaje);
       if (!isFinal && !isAbsent(alumno) && puntaje === "") return;
       if (!isAbsent(alumno) && !scoreIsValid(puntaje, consigna, alumno)) return;
       data.push({
@@ -898,7 +1262,8 @@ function applyCargaRows(rows) {
   function applyCargaValue(alumno, consigna, row) {
     if (!alumno || !consigna) return 0;
     const puntaje = row.Puntaje ?? row.puntaje ?? "";
-    alumno.scores[consigna.scoreKey] = puntaje === "" ? "" : String(puntaje).replace(",", ".");
+    alumno.scores[consigna.scoreKey] = puntaje === "" ? "" :
+      (isConceptual(consigna) ? normalizeText(puntaje) : String(puntaje).replace(",", "."));
     alumno.estadoAlumno = normalizeEstadoAlumno(row.EstadoAlumno || row.estadoalumno || alumno.estadoAlumno || "Presente");
     alumno.pudoResolver = row.PudoResolver || row.pudoresolver || alumno.pudoResolver;
     alumno.observacion = row.Observacion || row.observacion || alumno.observacion;
@@ -1014,9 +1379,60 @@ function decodeJwtPayload(token) {
   }
 }
 
+// --- Sesion persistente (app embebida) ---
+// El ID token de Google dura ~1 hora. Lo guardamos en sessionStorage (por
+// pestaña, no queda en maquinas compartidas) para que una recarga dentro del
+// sitio institucional no obligue a re-loguear.
+const idTokenStorageKey = `${storagePrefix}||session-token`;
+
+function tokenSecondsLeft(token = googleIdToken) {
+  const exp = Number(decodeJwtPayload(token).exp);
+  if (!Number.isFinite(exp)) return 0;
+  return Math.floor(exp - Date.now() / 1000);
+}
+
+function persistSession(token) {
+  try { sessionStorage.setItem(idTokenStorageKey, token); } catch {}
+}
+
+function clearStoredSession() {
+  googleIdToken = "";
+  docenteEmail = "";
+  try { sessionStorage.removeItem(idTokenStorageKey); } catch {}
+}
+
+function restoreStoredSession() {
+  try {
+    const token = sessionStorage.getItem(idTokenStorageKey) || "";
+    if (!token) return false;
+    const payload = decodeJwtPayload(token);
+    const email = String(payload.email || "").toLowerCase();
+    if (!email.endsWith(`@${ALLOWED_DOMAIN}`)) return false;
+    if (tokenSecondsLeft(token) < 120) return false;
+    googleIdToken = token;
+    docenteEmail = email;
+    debugLog("Sesion restaurada de sessionStorage |", email, "| vence en", tokenSecondsLeft(token), "s");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// La sesion vencio o el backend la rechazo: volver al gate y reintentar One Tap.
+function handleSessionExpired(message = `Tu sesion vencio. Volve a ingresar con tu cuenta @${ALLOWED_DOMAIN}.`) {
+  clearStoredSession();
+  loginGate.hidden = false;
+  setLoginMessage(message, "warning");
+  prepareGoogleButton();
+}
+
 function requireGoogleLogin() {
+  if (googleIdToken && tokenSecondsLeft() < 30) {
+    handleSessionExpired();
+    return false;
+  }
   if (googleIdToken) return true;
-  alert("Primero inicia sesion con Google.");
+  showNotice("Primero inicia sesion con Google.");
   return false;
 }
 
@@ -1065,17 +1481,24 @@ function closeSaveModal() {
   saveModal.hidden = true;
 }
 
+// Aviso simple en modal propio (reemplaza los alert() nativos del navegador).
+// El modal de aviso esta despues en el DOM que el de consignas, asi que se
+// apila encima cuando este esta abierto.
+function showNotice(message, title = "Atención") {
+  showSaveModal(title, message, "Revisar", true);
+}
+
 function requireScriptUrl() {
   const url = scriptUrl();
   if (!url) {
-    alert("Primero pega y guarda la URL de Apps Script.");
+    showNotice("Primero pega y guarda la URL de Apps Script.");
     connectionModal.hidden = false;
     return "";
   }
   return url;
 }
 
-async function sheetsGet(action, { attempts = 2 } = {}) {
+async function sheetsGet(action, { attempts = 2, params = {} } = {}) {
   const url = requireScriptUrl();
   if (!url) return null;
   if (!requireGoogleLogin()) return null;
@@ -1084,7 +1507,7 @@ async function sheetsGet(action, { attempts = 2 } = {}) {
   let lastError;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
-      const payload = await jsonpRequest(url, { action, idToken: googleIdToken, t: Date.now() });
+      const payload = await jsonpRequest(url, { action, ...params, idToken: googleIdToken, t: Date.now() });
       if (!payload.ok) throw new Error(payload.error || "Respuesta invalida");
       return payload.data;
     } catch (error) {
@@ -1134,9 +1557,10 @@ async function confirmSavedCargas(expectedRows, { attempts = 3 } = {}) {
 
   // El POST es asincrono (iframe) y Sheets tarda en reflejar la escritura, asi
   // que reintentamos la lectura antes de declarar un guardado parcial.
+  // Solo se leen las cargas del curso actual (todas las esperadas son de el).
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     await wait(attempt === 1 ? 1800 : 2500);
-    const remoteRows = normalizeCargaRows(await sheetsGet("cargas"));
+    const remoteRows = normalizeCargaRows(await sheetsGet("cargas", { params: { curso: courseFilter.value } }));
     const remoteIds = new Set(remoteRows.map(row => row.CargaID).filter(Boolean));
     missing = expectedIds.filter(id => !remoteIds.has(id));
     confirmed = expectedIds.length - missing.length;
@@ -1263,6 +1687,7 @@ function handleGoogleCredential(credentialResponse) {
 
   googleIdToken = token;
   docenteEmail = email;
+  persistSession(token);
   debugLog("Login OK |", docenteEmail, "| aud:", payload.aud, "| hd:", payload.hd, "| token:", maskToken(googleIdToken));
   saveStatus.textContent = `Sesion: ${docenteEmail}`;
   refreshAdminState();
@@ -1285,12 +1710,16 @@ function ensureGoogleIdentityInitialized() {
 
   if (googleInitializedClientId === clientId) return true;
 
+  // auto_select: si el docente tiene UNA sola sesion de Google (la
+  // institucional, caso tipico dentro del sitio Goethe) el login es silencioso,
+  // sin clicks. FedCM + itp_support: el flujo sigue andando cuando el navegador
+  // bloquea cookies de terceros (Chrome las esta eliminando; Safari ya).
   google.accounts.id.initialize({
     client_id: clientId,
-    auto_select: false,
+    auto_select: true,
     hd: ALLOWED_DOMAIN,
-    use_fedcm_for_prompt: false,
-    use_fedcm_for_button: false,
+    itp_support: true,
+    use_fedcm_for_prompt: true,
     callback: handleGoogleCredential
   });
   googleInitializedClientId = clientId;
@@ -1336,10 +1765,26 @@ function startGoogleLogin() {
   }, 4500);
 }
 
+// One Tap: pide la credencial sin click. Con auto_select y una unica sesion
+// institucional, el docente entra directo. Si Google no puede mostrarlo
+// (iframe sin permiso, cookies), el boton oficial queda como fallback.
+function attemptOneTap() {
+  if (googleIdToken || !window.google?.accounts?.id) return;
+  try {
+    // Sin callback de estado: esos metodos estan deprecados con FedCM y
+    // Google loguea un warning si se usan.
+    google.accounts.id.prompt();
+    debugLog("One Tap solicitado");
+  } catch (error) {
+    debugLog("One Tap no disponible:", error.message);
+  }
+}
+
 function prepareGoogleButton(attempt = 0) {
   if (!scriptUrl() || !googleClientId() || googleIdToken) return;
   if (renderGoogleButton()) {
     setLoginMessage("Usa el boton oficial de Google para ingresar con tu cuenta @goethe.edu.ar.");
+    attemptOneTap();
     return;
   }
   if (attempt < 20) {
@@ -1357,12 +1802,27 @@ function normalizeSheetRows(rows) {
   });
 }
 
-// Trae todos los datos. Intenta la accion 'bootstrap' (1 sola llamada al
-// backend optimizado). Si el backend todavia no expone bootstrap, cae a las
-// cuatro lecturas individuales en serie, para que la app funcione igual.
-async function fetchBootstrapBundle() {
+// Cursos cuyas cargas ya se trajeron del backend (se piden por curso: la
+// solapa Cargas crecio tanto que bajarla entera rompe la transferencia).
+let cargasLoadedCursos = new Set();
+let cargasFetchInFlight = new Set();
+
+// Mientras los registros del curso no llegaron, la grilla queda bloqueada:
+// si el docente pudiera tipear sobre la grilla "vacia", lo remoto despues le
+// pisaria lo tipeado (o editaria una carga que en realidad esta cerrada).
+function cargasPendingForCourse(curso = courseFilter.value) {
+  if (!curso) return false;
+  if (!scriptUrl() || !googleClientId() || !googleIdToken) return false;
+  return !cargasLoadedCursos.has(curso);
+}
+
+// Trae los datos maestros + las cargas SOLO del curso indicado. Intenta la
+// accion 'bootstrap' (1 sola llamada). Si el backend no la expone, cae a las
+// lecturas individuales en serie.
+async function fetchBootstrapBundle(curso = "") {
+  const params = curso ? { curso } : {};
   try {
-    const data = await sheetsGet("bootstrap");
+    const data = await sheetsGet("bootstrap", { params });
     if (data && (data.alumnos || data.mapas || data.cargas || data.admins)) {
       return {
         alumnos: data.alumnos || [],
@@ -1380,7 +1840,7 @@ async function fetchBootstrapBundle() {
   // concurrentes del mismo usuario; en paralelo las ultimas superan el timeout).
   const alumnos = await sheetsGet("alumnos");
   const mapas = await sheetsGet("mapas");
-  const cargas = await sheetsGet("cargas");
+  const cargas = await sheetsGet("cargas", { params });
   let admins = [];
   try {
     admins = await sheetsGet("admins");
@@ -1395,26 +1855,69 @@ async function fetchBootstrapBundle() {
   };
 }
 
+// Carga perezosa de las cargas de un curso la primera vez que se lo visita.
+// La grilla queda bloqueada (cargasPendingForCourse) hasta que lleguen.
+async function ensureCargasForCourse(curso) {
+  if (!curso || cargasLoadedCursos.has(curso) || cargasFetchInFlight.has(curso)) return;
+  if (!scriptUrl() || !googleClientId() || !googleIdToken) return;
+  cargasFetchInFlight.add(curso);
+  saveStatus.textContent = `Cargando registros de ${curso}...`;
+  try {
+    const remote = normalizeCargaRows(normalizeSheetRows(await sheetsGet("cargas", { params: { curso } })))
+      .filter(row => row.DNI && row.ConsignaID);
+    // Reemplaza las cargas de ese curso y reaplica sobre la grilla actual,
+    // preservando el borrador local (se aplica despues, y pisa lo remoto).
+    cargas = cargas.filter(row => row.Curso !== curso).concat(remote);
+    debugLog(`Cargas de ${curso}:`, remote.length, "filas");
+    cargasLoadedCursos.add(curso);
+    applyRemoteCargasForSelection();
+    restoreLocalDraft(false);
+    saveStatus.textContent = "Sheets sincronizado";
+  } catch (error) {
+    saveStatus.textContent = `No se pudieron cargar los registros de ${curso}`;
+    showNotice(`No se pudieron traer los registros de ${curso} (${error.message}). La grilla queda bloqueada: volve a seleccionar el curso para reintentar.`, "Registros del curso");
+    debugLog(`ensureCargasForCourse ${curso} fallo:`, error.message);
+  } finally {
+    cargasFetchInFlight.delete(curso);
+    // Re-render con el estado final: desbloquea si llegaron los datos.
+    if (courseFilter.value === curso) renderBody();
+  }
+}
+
 async function syncFromSheets({ showLoading = false } = {}) {
   if (showLoading) {
     showSaveModal("Cargando", "Sincronizando alumnos, mapas, cargas y permisos con Google Sheets. La primera carga puede tardar hasta un minuto.", "Sincronizando...");
   }
   saveStatus.textContent = "Sincronizando Sheets...";
   try {
-    const bundle = await fetchBootstrapBundle();
-    debugLog("Sync recibido | alumnos:", bundle.alumnos.length, "| mapas:", bundle.mapas.length, "| cargas:", bundle.cargas.length, "| admins:", bundle.admins.length);
+    // Las cargas viajan solo para el curso visible; el resto se pide al
+    // entrar a cada curso (ensureCargasForCourse). En el primer login todavia
+    // no hay alumnos importados y courseFilter tiene el valor demo del HTML:
+    // en ese caso no se pide curso (las trae ensureCargasForCourse despues).
+    const cursoInicial = alumnos.length ? (courseFilter.value || "") : "";
+    const bundle = await fetchBootstrapBundle(cursoInicial);
+    debugLog("Sync recibido | alumnos:", bundle.alumnos.length, "| mapas:", bundle.mapas.length, "| cargas:", bundle.cargas.length, `(curso: ${cursoInicial || "ninguno"})`, "| admins:", bundle.admins.length);
     applyImportedAlumnos(normalizeSheetRows(bundle.alumnos));
     applyImportedMapas(normalizeSheetRows(bundle.mapas));
     applyImportedCargas(normalizeSheetRows(bundle.cargas));
     applyImportedAdmins(bundle.admins);
+    cargasLoadedCursos = new Set(cursoInicial ? [cursoInicial] : []);
     saveStatus.textContent = admins.length ? "Sheets sincronizado" : "Sheets sincronizado - falta publicar Admins";
     if (showLoading) closeSaveModal();
+    // El curso autoseleccionado tras importar alumnos puede no ser el del
+    // bootstrap: traer sus cargas si falta.
+    ensureCargasForCourse(courseFilter.value);
   } catch (error) {
     saveStatus.textContent = "Error al sincronizar Sheets";
+    if (/no autorizado/i.test(error.message)) {
+      if (showLoading) closeSaveModal();
+      handleSessionExpired();
+      return;
+    }
     if (showLoading) {
       showSaveModal("No se pudo sincronizar", error.message, "Error", true);
     } else {
-      alert(`No se pudo sincronizar: ${error.message}`);
+      showNotice(`No se pudo sincronizar: ${error.message}`);
     }
   }
 }
@@ -1423,59 +1926,243 @@ function csvBlob(csv) {
   return new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8" });
 }
 
-function exportCargas() {
-  const { curso, materia, evaluacion } = selectedContext();
-  const headers = ["CargaID", "EvaluacionID", "ConsignaID", "DNI", "Curso", "DocenteEmail", "Puntaje", "UsoMaterial", "PudoResolver", "Observacion", "EstadoCarga", "FechaGuardado", "FechaCierre", "EstadoAlumno"];
-  const data = buildCargaRows("borrador").map(row => headers.map(header => row[header]));
-
-  const csv = [headers, ...data].map(row => row.map(value => `"${String(value).replaceAll('"', '""')}"`).join(",")).join("\n");
-  const blob = csvBlob(csv);
+// Descarga robusta: agrega el <a> al DOM (Firefox/algunos navegadores no
+// disparan el click si no esta en el documento) y difiere el revoke para no
+// cancelar la descarga.
+function triggerDownload(blob, filename) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `cargas_${curso}_${materia}_${evaluacion}.csv`.replace(/\s+/g, "_");
+  link.download = filename;
+  link.style.display = "none";
+  document.body.appendChild(link);
   link.click();
-  URL.revokeObjectURL(url);
+  window.setTimeout(() => {
+    if (link.parentNode) link.parentNode.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, 1500);
+}
+
+// --- Exportacion a XLSX real, sin dependencias ---
+// El CSV con comas se abre mal en Excel en espa\u00f1ol (usa ; como separador) y
+// los decimales con punto quedan como texto. Generamos un .xlsx valido para
+// que abra siempre bien, con numeros como numeros.
+const CRC32_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let n = 0; n < 256; n += 1) {
+    let c = n;
+    for (let k = 0; k < 8; k += 1) {
+      c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    }
+    table[n] = c >>> 0;
+  }
+  return table;
+})();
+
+function crc32(bytes) {
+  let crc = 0xFFFFFFFF;
+  for (let i = 0; i < bytes.length; i += 1) {
+    crc = CRC32_TABLE[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+  }
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
+const xlsxEncoder = new TextEncoder();
+
+// Empaqueta archivos en un ZIP sin compresion (metodo "store"), suficiente
+// para un .xlsx valido.
+function zipStore(files) {
+  const chunks = [];
+  const central = [];
+  let offset = 0;
+
+  function bytesLE(value, length) {
+    const arr = new Uint8Array(length);
+    let v = value >>> 0;
+    for (let i = 0; i < length; i += 1) {
+      arr[i] = v & 0xFF;
+      v = Math.floor(v / 256);
+    }
+    return arr;
+  }
+
+  files.forEach(file => {
+    const nameBytes = xlsxEncoder.encode(file.name);
+    const crc = crc32(file.data);
+    const size = file.data.length;
+
+    const local = [
+      bytesLE(0x04034b50, 4), bytesLE(20, 2), bytesLE(0, 2), bytesLE(0, 2),
+      bytesLE(0, 2), bytesLE(0, 2), bytesLE(crc, 4), bytesLE(size, 4),
+      bytesLE(size, 4), bytesLE(nameBytes.length, 2), bytesLE(0, 2), nameBytes
+    ];
+    local.forEach(part => chunks.push(part));
+    chunks.push(file.data);
+
+    const localLength = local.reduce((sum, part) => sum + part.length, 0);
+
+    const cen = [
+      bytesLE(0x02014b50, 4), bytesLE(20, 2), bytesLE(20, 2), bytesLE(0, 2),
+      bytesLE(0, 2), bytesLE(0, 2), bytesLE(0, 2), bytesLE(crc, 4),
+      bytesLE(size, 4), bytesLE(size, 4), bytesLE(nameBytes.length, 2),
+      bytesLE(0, 2), bytesLE(0, 2), bytesLE(0, 2), bytesLE(0, 2),
+      bytesLE(0, 4), bytesLE(offset, 4), nameBytes
+    ];
+    central.push(cen);
+
+    offset += localLength + file.data.length;
+  });
+
+  const centralStart = offset;
+  let centralSize = 0;
+  central.forEach(cen => {
+    cen.forEach(part => {
+      chunks.push(part);
+      centralSize += part.length;
+    });
+  });
+
+  const end = [
+    bytesLE(0x06054b50, 4), bytesLE(0, 2), bytesLE(0, 2),
+    bytesLE(files.length, 2), bytesLE(files.length, 2),
+    bytesLE(centralSize, 4), bytesLE(centralStart, 4), bytesLE(0, 2)
+  ];
+  end.forEach(part => chunks.push(part));
+
+  const total = chunks.reduce((sum, part) => sum + part.length, 0);
+  const out = new Uint8Array(total);
+  let pos = 0;
+  chunks.forEach(part => { out.set(part, pos); pos += part.length; });
+  return out;
+}
+
+function xmlEscape(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+}
+
+function xlsxColName(index) {
+  let name = "";
+  let n = index;
+  do {
+    name = String.fromCharCode(65 + (n % 26)) + name;
+    n = Math.floor(n / 26) - 1;
+  } while (n >= 0);
+  return name;
+}
+
+// Convierte un valor a numero para la celda solo si es claramente numerico,
+// preservando como texto los IDs/DNI con ceros a la izquierda.
+function numericCell(value) {
+  if (value === "" || value == null) return "";
+  if (typeof value === "number") return Number.isFinite(value) ? value : "";
+  const text = String(value).trim();
+  if (/^-?\d+(?:[.,]\d+)?$/.test(text) && !/^0\d/.test(text)) {
+    return Number(text.replace(",", "."));
+  }
+  return String(value);
+}
+
+function sheetXml(aoa) {
+  const rowsXml = aoa.map((row, r) => {
+    const cellsXml = row.map((cell, c) => {
+      const ref = xlsxColName(c) + (r + 1);
+      if (typeof cell === "number" && Number.isFinite(cell)) {
+        return `<c r="${ref}"><v>${cell}</v></c>`;
+      }
+      return `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${xmlEscape(cell)}</t></is></c>`;
+    }).join("");
+    return `<row r="${r + 1}">${cellsXml}</row>`;
+  }).join("");
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+    `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${rowsXml}</sheetData></worksheet>`;
+}
+
+function sanitizeSheetName(name) {
+  const clean = String(name || "Hoja1").replace(/[:\\/?*[\]]/g, " ").trim().slice(0, 31);
+  return clean || "Hoja1";
+}
+
+function downloadXlsx(filename, sheetName, aoa) {
+  const safeSheet = xmlEscape(sanitizeSheetName(sheetName));
+  const files = [
+    { name: "[Content_Types].xml", text:
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+      `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
+      `<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
+      `<Default Extension="xml" ContentType="application/xml"/>` +
+      `<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>` +
+      `<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>` +
+      `</Types>` },
+    { name: "_rels/.rels", text:
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+      `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+      `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>` +
+      `</Relationships>` },
+    { name: "xl/workbook.xml", text:
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+      `<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
+      `<sheets><sheet name="${safeSheet}" sheetId="1" r:id="rId1"/></sheets></workbook>` },
+    { name: "xl/_rels/workbook.xml.rels", text:
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+      `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+      `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>` +
+      `</Relationships>` },
+    { name: "xl/worksheets/sheet1.xml", text: sheetXml(aoa) }
+  ].map(file => ({ name: file.name, data: xlsxEncoder.encode(file.text) }));
+
+  const blob = new Blob([zipStore(files)], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  triggerDownload(blob, filename);
+}
+
+function exportCargas() {
+  const { curso, materia, evaluacion } = selectedContext();
+  const headers = ["CargaID", "EvaluacionID", "ConsignaID", "DNI", "Curso", "DocenteEmail", "Puntaje", "UsoMaterial", "PudoResolver", "Observacion", "EstadoCarga", "FechaGuardado", "FechaCierre", "EstadoAlumno"];
+  const data = buildCargaRows("borrador").map(row =>
+    headers.map(header => header === "Puntaje" ? numericCell(row[header]) : (row[header] ?? ""))
+  );
+
+  const filename = `cargas_${curso}_${materia}_${evaluacion}.xlsx`.replace(/\s+/g, "_");
+  downloadXlsx(filename, "Cargas", [headers, ...data]);
 }
 
 function exportVisibleGrid() {
   const { curso, materia, evaluacion } = selectedContext();
   const criteria = activeConsignas();
-  const headers = ["Nr.", "Nombre", "Alumno", ...criteria.map(c => c.titulo), "Puntaje", "Calificacion", "Observaciones"];
-  const maxRow = ["", "Valor maximo", "", ...criteria.map(c => c.max), "", "", ""];
+  const headers = ["Nr.", "Nombre", "Estado", ...criteria.map(c => c.titulo), "Puntaje", "Calificacion", "Observaciones"];
+  const extraRows = [];
+  if (criteria.some(c => c.competencia)) {
+    extraRows.push(["", "Competencia", "", ...criteria.map(c => c.competencia || ""), "", "", ""]);
+  }
+  if (criteria.some(c => c.eje)) {
+    extraRows.push(["", "Eje", "", ...criteria.map(c => c.eje || ""), "", "", ""]);
+  }
+  const maxRow = ["", "Valor maximo", "", ...criteria.map(c => isConceptual(c) ? "" : numericCell(c.max)), "", "", ""];
   const rows = currentRows().map((alumno, index) => {
     const totals = studentTotals(alumno);
     return [
       index + 1,
       alumno.nombre,
       alumno.estadoAlumno || "Presente",
-      ...criteria.map(c => alumno.scores[c.scoreKey] ?? ""),
-      totals.puntaje.toFixed(1),
+      ...criteria.map(c => numericCell(alumno.scores[c.scoreKey] ?? "")),
+      Number(totals.puntaje.toFixed(1)),
       `${totals.porcentaje.toFixed(1)}%`,
       alumno.observacion
     ];
   });
-  const csv = [headers, maxRow, ...rows].map(row => row.map(value => `"${String(value ?? "").replaceAll('"', '""')}"`).join(",")).join("\n");
-  const blob = csvBlob(csv);
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `grilla_${curso}_${materia}_${evaluacion}.csv`.replace(/\s+/g, "_");
-  link.click();
-  URL.revokeObjectURL(url);
+  const filename = `grilla_${curso}_${materia}_${evaluacion}.xlsx`.replace(/\s+/g, "_");
+  downloadXlsx(filename, `${curso} ${materia}`, [headers, ...extraRows, maxRow, ...rows]);
 }
 
 function exportMapas() {
-  const headers = ["MapaID", "MateriaID", "MateriaNombre", "EvaluacionID", "EvaluacionNombre", "Nivel", "Curso", "AnioLectivo", "ConsignaID", "ConsignaContenido", "ConsignaPuntajeMax", "ConsignaIncremento", "ConsignaOrden", "ConsignaActiva", "FechaCaducidad"];
+  const headers = ["MapaID", "MateriaID", "MateriaNombre", "EvaluacionID", "EvaluacionNombre", "Nivel", "Curso", "AnioLectivo", "ConsignaID", "ConsignaContenido", "ConsignaPuntajeMax", "ConsignaIncremento", "ConsignaOrden", "ConsignaActiva", "FechaCaducidad", "Competencia", "Eje", "PeriodoEvaluacion", "TipoCalificacion", "EscalaConceptual"];
   const rows = mapas.map(row => headers.map(header => row[header] ?? ""));
   const csv = [headers, ...rows].map(row => row.map(value => `"${String(value).replaceAll('"', '""')}"`).join(",")).join("\n");
-  const blob = csvBlob(csv);
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "mapas_actualizados.csv";
-  link.click();
-  URL.revokeObjectURL(url);
+  triggerDownload(csvBlob(csv), "mapas_actualizados.csv");
 }
 
 table.addEventListener("keydown", event => {
@@ -1532,6 +2219,7 @@ courseFilter.addEventListener("input", () => {
   renderHeader();
   renderBody();
   restoreLocalDraft();
+  ensureCargasForCourse(courseFilter.value);
 });
 
 subjectFilter.addEventListener("input", () => {
@@ -1548,13 +2236,24 @@ evaluationFilter.addEventListener("input", () => {
   restoreLocalDraft();
 });
 
+periodFilter.addEventListener("input", () => {
+  refreshFilters();
+  renderHeader();
+  renderBody();
+  restoreLocalDraft();
+});
+
 [searchInput, showIncomplete].forEach(control => {
   control.addEventListener("input", renderBody);
 });
 
 document.getElementById("saveBtn").addEventListener("click", () => {
   if (!scriptUrl() || !googleIdToken) {
-    alert("Para guardar, primero inicia sesion y conecta Google Sheets.");
+    showNotice("Para guardar, primero inicia sesion y conecta Google Sheets.");
+    return;
+  }
+  if (cargasPendingForCourse()) {
+    showNotice("Todavia se estan cargando los registros del curso. Espera unos segundos.");
     return;
   }
   if (currentLoadIsClosed()) {
@@ -1577,7 +2276,11 @@ document.getElementById("saveBtn").addEventListener("click", () => {
 
 document.getElementById("finishBtn").addEventListener("click", () => {
   if (!scriptUrl() || !googleIdToken) {
-    alert("Para finalizar, primero inicia sesion y conecta Google Sheets.");
+    showNotice("Para finalizar, primero inicia sesion y conecta Google Sheets.");
+    return;
+  }
+  if (cargasPendingForCourse()) {
+    showNotice("Todavia se estan cargando los registros del curso. Espera unos segundos.");
     return;
   }
   if (currentLoadIsClosed()) {
@@ -1606,7 +2309,7 @@ document.getElementById("exportBtn").addEventListener("click", () => {
 });
 document.getElementById("exportMapsBtn").addEventListener("click", () => {
   if (!isAdmin) {
-    alert("Solo administradores pueden exportar mapas.");
+    showNotice("Solo administradores pueden exportar mapas.");
     return;
   }
   exportMapas();
@@ -1632,11 +2335,11 @@ document.getElementById("saveConnectionBtn").addEventListener("click", () => {
   const url = normalizeText(scriptUrlInput.value);
   const clientId = normalizeText(googleClientIdInput.value);
   if (!url.startsWith("https://script.google.com/")) {
-    alert("Pega una URL valida de Apps Script.");
+    showNotice("Pega una URL valida de Apps Script.");
     return;
   }
   if (!clientId.endsWith(".apps.googleusercontent.com")) {
-    alert("Pega un Google Client ID valido.");
+    showNotice("Pega un Google Client ID valido.");
     return;
   }
   localStorage.setItem(scriptUrlStorageKey, url);
@@ -1683,13 +2386,75 @@ document.getElementById("loadsFile").addEventListener("change", event => {
   event.target.value = "";
 });
 
-document.getElementById("criteriaBtn").addEventListener("click", () => {
-  if (!isAdmin) {
-    alert("Solo administradores pueden editar consignas.");
-    return;
+function loadEditingDraft() {
+  draftConsignas = consignasForEvaluation(editingMateria, editingEvaluacion).map(c => ({ ...c }));
+  if (!draftConsignas.length) draftConsignas = [blankConsigna(1)];
+}
+
+function openCriteriaModal(mode) {
+  criteriaMode = mode;
+  if (mode === "new") {
+    newEvaluationPrefillMateria = newEvaluationPrefillMateria || subjectFilter.value || "";
+    draftConsignas = [blankConsigna(1)];
+  } else {
+    // Arranca en lo que este mirando la grilla (comodo para el docente-admin),
+    // pero desde el selector del modal se navega a cualquier materia/evaluacion.
+    const materias = materiasDisponibles();
+    editingMateria = materias.includes(subjectFilter.value) ? subjectFilter.value : (materias[0] || "");
+    const evaluaciones = evaluacionesDeMateria(editingMateria);
+    editingEvaluacion = evaluaciones.includes(evaluationFilter.value) ? evaluationFilter.value : (evaluaciones[0] || "");
+    loadEditingDraft();
   }
   renderCriteriaEditor();
   criteriaModal.hidden = false;
+}
+
+document.getElementById("criteriaBtn").addEventListener("click", () => {
+  if (!isAdmin) {
+    showNotice("Solo administradores pueden editar consignas.");
+    return;
+  }
+  newEvaluationPrefillMateria = "";
+  newEvaluationPrefillNombre = "";
+  // Sin mapas cargados se abre directo en modo creacion.
+  openCriteriaModal(materiasDisponibles().length ? "edit" : "new");
+});
+
+document.getElementById("newEvaluationBtn").addEventListener("click", () => {
+  if (criteriaMode === "new") return;
+  newEvaluationPrefillMateria = editingMateria || subjectFilter.value || "";
+  newEvaluationPrefillNombre = "";
+  draftConsignas = [blankConsigna(1)];
+  criteriaMode = "new";
+  renderCriteriaEditor();
+});
+
+// Selector propio del modal (cambiar materia/evaluacion recarga el borrador)
+// y duplicacion: delegados porque el contenido del modal se re-renderiza.
+criteriaList.addEventListener("change", event => {
+  if (event.target.id === "criteriaMateriaSelect") {
+    editingMateria = event.target.value;
+    editingEvaluacion = evaluacionesDeMateria(editingMateria)[0] || "";
+    loadEditingDraft();
+    renderCriteriaEditor();
+  } else if (event.target.id === "criteriaEvaluacionSelect") {
+    editingEvaluacion = event.target.value;
+    loadEditingDraft();
+    renderCriteriaEditor();
+  }
+});
+
+criteriaList.addEventListener("click", event => {
+  if (event.target.id !== "duplicateEvaluationBtn") return;
+  // Clona las consignas de la evaluacion elegida hacia una evaluacion nueva:
+  // la forma rapida de extender mapas a otros niveles/materias/periodos.
+  newEvaluationPrefillMateria = editingMateria;
+  newEvaluationPrefillNombre = `${editingEvaluacion} (copia)`;
+  draftConsignas = consignasForEvaluation(editingMateria, editingEvaluacion)
+    .map((c, index) => ({ ...c, consignaId: "", scoreKey: `NEW-${Date.now()}-${index}` }));
+  if (!draftConsignas.length) draftConsignas = [blankConsigna(1)];
+  criteriaMode = "new";
+  renderCriteriaEditor();
 });
 
 document.getElementById("closeCriteriaBtn").addEventListener("click", () => {
@@ -1704,10 +2469,25 @@ criteriaList.addEventListener("input", event => {
   const target = event.target;
   const index = Number(target.dataset.criteria);
   const field = target.dataset.field;
-  if (!Number.isInteger(index) || !field) return;
-  if (field === "active") consignas[index][field] = target.checked;
-  else if (field === "titulo") consignas[index][field] = target.value;
-  else consignas[index][field] = Number(target.value);
+  if (!Number.isInteger(index) || !field || !draftConsignas[index]) return;
+  if (field === "active") draftConsignas[index][field] = target.checked;
+  else if (["titulo", "competencia", "eje", "tipo", "escala"].includes(field)) draftConsignas[index][field] = target.value;
+  else draftConsignas[index][field] = Number(target.value);
+
+  // Cambiar el tipo intercambia los campos de la fila (escala <-> puntajes):
+  // re-render preservando lo tipeado en el formulario superior.
+  if (field === "tipo") {
+    const consigna = draftConsignas[index];
+    if (consigna.tipo === "conceptual" && !normalizeText(consigna.escala)) {
+      const materiaRef = criteriaMode === "new"
+        ? (document.getElementById("criteriaMateria")?.value || "")
+        : editingMateria;
+      consigna.escala = escalaDeMateria(materiaRef);
+    }
+    const saved = captureCriteriaFormState();
+    renderCriteriaEditor();
+    restoreCriteriaFormState(saved);
+  }
 });
 
 criteriaList.addEventListener("change", event => {
@@ -1721,53 +2501,98 @@ criteriaList.addEventListener("change", event => {
 
   if (event.target.type === "checkbox") {
     const index = Number(event.target.dataset.criteria);
-    if (Number.isInteger(index)) consignas[index].active = event.target.checked;
+    if (Number.isInteger(index) && draftConsignas[index]) draftConsignas[index].active = event.target.checked;
   }
 });
 
-document.getElementById("addCriteriaBtn").addEventListener("click", () => {
-  consignas.push({
-    id: consignas.length + 1,
-    scoreKey: `NEW-${Date.now()}`,
-    consignaId: `NEW-${Date.now()}`,
-    titulo: "Nueva consigna",
-    max: 1,
-    step: 0.5,
-    active: true
+// El formulario superior se reconstruye al re-renderizar (p. ej. al agregar
+// una consigna): capturamos lo tipeado para no perderlo.
+function captureCriteriaFormState() {
+  return {
+    materia: document.getElementById("criteriaMateria")?.value,
+    evaluacion: document.getElementById("criteriaEvaluacion")?.value,
+    expiration: document.getElementById("criteriaExpiration")?.value,
+    period: document.getElementById("criteriaPeriod")?.value,
+    courses: selectedCriteriaCourses()
+  };
+}
+
+function restoreCriteriaFormState(saved) {
+  if (!saved) return;
+  const setValue = (id, value) => {
+    const input = document.getElementById(id);
+    if (input && value !== undefined) input.value = value;
+  };
+  setValue("criteriaMateria", saved.materia);
+  setValue("criteriaEvaluacion", saved.evaluacion);
+  setValue("criteriaExpiration", saved.expiration);
+  setValue("criteriaPeriod", saved.period);
+  const courseSet = new Set(saved.courses);
+  criteriaList.querySelectorAll("[data-course]").forEach(input => {
+    input.checked = courseSet.has(input.dataset.course);
   });
-  normalizeConsignas();
+}
+
+document.getElementById("addCriteriaBtn").addEventListener("click", () => {
+  const saved = captureCriteriaFormState();
+  const nextOrden = draftConsignas.reduce((max, c) => Math.max(max, Number(c.id) || 0), 0) + 1;
+  draftConsignas.push(blankConsigna(nextOrden));
+  sortConsignasByOrder(draftConsignas);
   renderCriteriaEditor();
+  restoreCriteriaFormState(saved);
 });
+
+// Deja los filtros apuntando a la evaluacion recien creada/editada.
+function focusEvaluationInFilters(materiaNombre, evaluacionNombre, courses) {
+  refreshFilters();
+  if (courses.length && !courses.includes(courseFilter.value)) {
+    courseFilter.value = courses[0];
+    refreshFilters();
+  }
+  if ([...subjectFilter.options].some(option => option.value === materiaNombre)) {
+    subjectFilter.value = materiaNombre;
+    refreshFilters();
+  }
+  if (periodFilter && !periodLabel.hidden && selectedPeriod()) {
+    periodFilter.value = ALL_PERIODS;
+    refreshFilters();
+  }
+  if ([...evaluationFilter.options].some(option => option.value === evaluacionNombre)) {
+    evaluationFilter.value = evaluacionNombre;
+    syncConsignasFromSelection();
+  }
+}
 
 document.getElementById("applyCriteriaBtn").addEventListener("click", () => {
   if (!isAdmin) {
-    alert("Solo administradores pueden aplicar cambios en consignas.");
+    showNotice("Solo administradores pueden aplicar cambios en consignas.");
     return;
   }
-  if (!activeConsignas().length) {
-    alert("Debe quedar al menos una consigna visible.");
+  if (!draftConsignas.some(c => c.active)) {
+    showNotice("Debe quedar al menos una consigna visible.");
     return;
   }
-  if (!validCriteriaConfig()) {
-    alert("Revisa las consignas: cada una debe tener nombre, orden, puntaje maximo e incremento validos.");
+  if (!validCriteriaConfig(draftConsignas)) {
+    showNotice("Revisa las consignas: cada una debe tener nombre, orden, puntaje maximo e incremento validos.");
     return;
   }
-  normalizeConsignas();
-  const changedMapRows = upsertMapRowsFromCriteria();
-  if (!changedMapRows) return;
-  refreshFilters();
+  sortConsignasByOrder(draftConsignas);
+  const result = upsertMapRowsFromCriteria();
+  if (!result) return;
+  focusEvaluationInFilters(result.materiaNombre, result.evaluacionNombre, result.courses);
+  backfillScoreKeys();
   renderHeader();
   renderBody();
   criteriaModal.hidden = true;
   saveStatus.textContent = "Mapas actualizados";
   if (scriptUrl()) {
-    sheetsPost("upsertMapas", changedMapRows)
-      .then(result => {
-        saveStatus.textContent = `Mapas guardados en Sheets (${result?.rows || 0} filas actualizadas)`;
+    sheetsPost("upsertMapas", result.changedRows)
+      .then(postResult => {
+        saveStatus.textContent = `Mapas guardados en Sheets (${postResult?.rows || 0} filas actualizadas)`;
       })
       .catch(error => {
         saveStatus.textContent = "Mapas actualizados localmente";
-        alert(`No se pudo guardar Mapas en Sheets: ${error.message}`);
+        showNotice(`No se pudo guardar Mapas en Sheets: ${error.message}`);
       });
   }
 });
@@ -1837,11 +2662,29 @@ if (window.self !== window.top) {
   setLoginMessage("Usa una cuenta @goethe.edu.ar. Si el selector de Google no aparece, revisa que el navegador permita ventanas emergentes y cookies.");
 }
 
+// Identificacion visual del entorno de pruebas (carpeta /dev/ o localhost).
+const IS_DEV_ENV = /\/dev\/|-dev\//.test(window.location.pathname) ||
+  ["localhost", "127.0.0.1"].includes(window.location.hostname);
+if (IS_DEV_ENV) {
+  document.title = `[DEV] ${document.title}`;
+  const badge = document.createElement("div");
+  badge.className = "dev-badge";
+  badge.textContent = "ENTORNO DE PRUEBAS";
+  document.body.appendChild(badge);
+}
+
 if (scriptUrl() && googleClientId()) {
   alumnos = [];
   mapas = [];
-  saveStatus.textContent = "Esperando login";
-  prepareGoogleButton();
+  if (restoreStoredSession()) {
+    saveStatus.textContent = `Sesion: ${docenteEmail}`;
+    refreshAdminState();
+    loginGate.hidden = true;
+    syncFromSheets({ showLoading: true });
+  } else {
+    saveStatus.textContent = "Esperando login";
+    prepareGoogleButton();
+  }
 } else {
   alumnos = demoAlumnos;
   mapas = demoMapas;

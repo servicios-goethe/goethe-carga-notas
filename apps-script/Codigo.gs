@@ -2,7 +2,7 @@ const SPREADSHEET_ID = "1GXOSs1tNHBbv4AOYhOpgrOB4Jz5p6QU3HTqBzufFXDc";
 const ALLOWED_DOMAIN = "goethe.edu.ar";
 // Client ID del frontend (Google Identity). Se usa para validar el `aud` del idToken.
 const GOOGLE_CLIENT_ID = "225474160522-7rk742a5qubfaf0te9uqiokfr4umj7al.apps.googleusercontent.com";
-const API_VERSION = "2026-06-26-bootstrap-token";
+const API_VERSION = "2026-07-02-cargas-por-curso";
 
 const SHEETS = {
   alumnos: "Alumnos",
@@ -11,11 +11,17 @@ const SHEETS = {
   admins: "Admins"
 };
 
+// Las columnas nuevas van AL FINAL a proposito: asi el orden de las columnas
+// existentes en la solapa Mapas no cambia y el frontend viejo (produccion)
+// sigue funcionando sin enterarse.
+// TipoCalificacion: numerica (default) | conceptual. EscalaConceptual: valores
+// separados por | (ej. Logrado|En proceso|Iniciado), editable por materia.
 const MAPAS_HEADERS = [
   "MapaID", "MateriaID", "MateriaNombre", "EvaluacionID", "EvaluacionNombre",
   "Nivel", "Curso", "AnioLectivo", "ConsignaID", "ConsignaContenido",
   "ConsignaPuntajeMax", "ConsignaIncremento", "ConsignaOrden",
-  "ConsignaActiva", "FechaCaducidad"
+  "ConsignaActiva", "FechaCaducidad", "Competencia", "Eje", "PeriodoEvaluacion",
+  "TipoCalificacion", "EscalaConceptual"
 ];
 
 const CARGAS_HEADERS = [
@@ -46,6 +52,7 @@ function doGet(e) {
     if (action === "me") return output(e, { ok: true, data: user });
 
     // Una sola llamada que devuelve todo: evita varios arranques en frio.
+    // Pasar ?curso=EP2A limita las cargas a ese curso (ver readCargas).
     if (action === "bootstrap") {
       return output(e, {
         ok: true,
@@ -53,7 +60,7 @@ function doGet(e) {
         data: {
           alumnos: readSheetObjects(SHEETS.alumnos),
           mapas: readSheetObjects(SHEETS.mapas),
-          cargas: readSheetObjects(SHEETS.cargas),
+          cargas: readCargas(e.parameter.curso),
           admins: readSheetObjects(SHEETS.admins)
         }
       });
@@ -61,7 +68,7 @@ function doGet(e) {
 
     if (action === "alumnos") return output(e, { ok: true, data: readSheetObjects(SHEETS.alumnos), user });
     if (action === "mapas") return output(e, { ok: true, data: readSheetObjects(SHEETS.mapas), user });
-    if (action === "cargas") return output(e, { ok: true, data: readSheetObjects(SHEETS.cargas), user });
+    if (action === "cargas") return output(e, { ok: true, data: readCargas(e.parameter.curso), user });
     if (action === "admins" || action === "admin") return output(e, { ok: true, data: readSheetObjects(SHEETS.admins), user });
     return output(e, { ok: false, error: "Accion GET no soportada: " + action });
   } catch (error) {
@@ -140,6 +147,19 @@ function isAdminEmail(email) {
     const adminEmail = String(row.Email || row.email || row.Mail || row.mail || row.Usuario || row.usuario || "").trim().toLowerCase();
     const active = String(row.Activo || row.activo || "TRUE").trim().toLowerCase();
     return adminEmail === target && !["false", "0", "no", "n"].includes(active);
+  });
+}
+
+// Cargas filtradas por curso en el servidor (?curso=EP2A): bajar la solapa
+// completa falla por tamaño desde que crecio con uso real. Sin curso devuelve
+// todo por compatibilidad con el frontend anterior (que fallara igual que hoy
+// hasta actualizarse, pero sin riesgo de mostrar datos incompletos).
+function readCargas(curso) {
+  const target = String(curso || "").trim();
+  const rows = readSheetObjects(SHEETS.cargas);
+  if (!target) return rows;
+  return rows.filter(function(row) {
+    return String(row.Curso || "").trim() === target;
   });
 }
 

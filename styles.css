@@ -329,7 +329,14 @@ thead th {
   font-weight: 700;
 }
 
-thead tr:nth-child(2) th {
+/* Las filas de agrupacion (Competencia/Eje) no fijan top: se desplazan con el
+   scroll y evitan solaparse con la fila de titulos, que si queda fija. */
+thead tr.group-row th {
+  top: auto;
+  z-index: 25;
+}
+
+thead tr.max-row th {
   top: 74px;
   background: #e7f0eb;
   color: var(--green-dark);
@@ -391,15 +398,39 @@ thead .student-col {
   box-shadow: 0 0 0 1px var(--line);
 }
 
-thead tr:nth-child(2) .student-col {
+thead tr.max-row .student-col {
   background: #e7f0eb;
   color: var(--green-dark);
 }
 
-thead tr:nth-child(2) .sticky-col,
-thead tr:nth-child(2) .header-empty {
+thead tr.max-row .sticky-col,
+thead tr.max-row .header-empty {
   background: #e7f0eb;
   color: var(--green-dark);
+  box-shadow: 0 0 0 1px var(--line);
+}
+
+/* Filas de agrupacion (Competencia / Eje, niveles superiores de la consigna) */
+thead tr.group-row .criteria-group {
+  background: #f3f8f5;
+  color: var(--green-dark);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 8px;
+  white-space: normal;
+  border-bottom: 2px solid var(--green);
+  box-shadow: 0 0 0 1px var(--line);
+}
+
+thead tr.group-row .group-label {
+  background: #f3f8f5;
+  color: var(--green-dark);
+  font-size: 12px;
+}
+
+thead tr.group-row .sticky-col,
+thead tr.group-row .header-empty {
+  background: #f3f8f5;
   box-shadow: 0 0 0 1px var(--line);
 }
 
@@ -432,29 +463,47 @@ td select:focus {
   background: #fff;
 }
 
-.score-cell.pending input {
+.score-cell.pending input,
+.score-cell.pending select {
   border-color: #d5b64b;
   background: #fff9df;
   color: #5c4a00;
 }
 
-.score-cell.valid input {
+.score-cell.valid input,
+.score-cell.valid select {
   border-color: #cfe3d9;
   background: #f3faf6;
   color: var(--ink);
 }
 
-.score-cell.invalid input {
+.score-cell.invalid input,
+.score-cell.invalid select {
   border-color: var(--warn);
   background: #fff0ee;
   color: var(--warn);
 }
 
 .score-cell.exempt input,
-.score-cell.not-required input {
+.score-cell.not-required input,
+.score-cell.exempt select,
+.score-cell.not-required select {
   border-color: #c9d2d0;
   background: #eef2f1;
   color: var(--muted);
+}
+
+/* Selector de calificacion conceptual: ancho acorde a los textos de la escala */
+.score-cell .concept-select {
+  min-width: 110px;
+  text-align: left;
+  padding: 0 6px;
+}
+
+/* Grilla esperando los registros del curso: atenuada y sin edicion */
+.table-wrap.loading-cargas tbody {
+  opacity: .5;
+  pointer-events: none;
 }
 
 .calculated {
@@ -486,6 +535,12 @@ td select:focus {
   place-items: center;
   padding: 24px;
   background: rgba(29, 42, 37, .42);
+}
+
+/* El modal de avisos/guardado se apila sobre cualquier otro modal abierto
+   (esta antes en el DOM que el de consignas, el z-index decide). */
+#saveModal {
+  z-index: 300;
 }
 
 .modal {
@@ -648,7 +703,7 @@ td select:focus {
 
 .criteria-row {
   display: grid;
-  grid-template-columns: 76px minmax(220px, 1fr) 110px 110px 92px;
+  grid-template-columns: 76px minmax(170px, 1.2fr) 110px minmax(120px, 1fr) minmax(120px, 1fr) 92px 92px 68px;
   gap: 10px;
   align-items: end;
   padding: 10px 0;
@@ -662,6 +717,27 @@ td select:focus {
 .criteria-row input[type="checkbox"] {
   width: 16px;
   height: 16px;
+}
+
+/* La escala conceptual reemplaza Puntaje max / Incremento / Orden en la fila */
+.criteria-row .escala-field {
+  grid-column: span 3;
+}
+
+.dev-badge {
+  position: fixed;
+  left: 12px;
+  bottom: 12px;
+  z-index: 999;
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: #c47f17;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
 }
 
 .criteria-row .active-field {
