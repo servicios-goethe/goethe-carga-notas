@@ -40,7 +40,7 @@ const APP_CONFIG = {
   scriptUrl: "https://script.google.com/macros/s/AKfycbxrwC0TARz15BwQqwGVzJEqs_ZnLlBy4Q681fim94px4NlrgTVNgHMzkJw9bS3DUkUi/exec",
   googleClientId: "225474160522-7rk742a5qubfaf0te9uqiokfr4umj7al.apps.googleusercontent.com"
 };
-const APP_VERSION = "2026-07-02.3";
+const APP_VERSION = "2026-07-02.4";
 const ALLOWED_DOMAIN = "goethe.edu.ar";
 const storagePrefix = "goethe-mapa-aprendizajes";
 const scriptUrlStorageKey = `${storagePrefix}||apps-script-url`;
@@ -1896,7 +1896,10 @@ async function syncFromSheets({ showLoading = false } = {}) {
     // no hay alumnos importados y courseFilter tiene el valor demo del HTML:
     // en ese caso no se pide curso (las trae ensureCargasForCourse despues).
     const cursoInicial = alumnos.length ? (courseFilter.value || "") : "";
-    const bundle = await fetchBootstrapBundle(cursoInicial);
+    // Sin curso conocido se manda un centinela que no matchea ninguno: el
+    // backend sin parametro devolveria TODAS las cargas (6000+ filas y
+    // creciendo), que es exactamente lo que tiro abajo el bootstrap.
+    const bundle = await fetchBootstrapBundle(cursoInicial || "__sin_curso__");
     debugLog("Sync recibido | alumnos:", bundle.alumnos.length, "| mapas:", bundle.mapas.length, "| cargas:", bundle.cargas.length, `(curso: ${cursoInicial || "ninguno"})`, "| admins:", bundle.admins.length);
     applyImportedAlumnos(normalizeSheetRows(bundle.alumnos));
     applyImportedMapas(normalizeSheetRows(bundle.mapas));
