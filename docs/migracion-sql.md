@@ -1,5 +1,12 @@
 # Plan de migración: Google Sheets → SQL
 
+> **Actualización**: el destino elegido es el **SQL Server 2022 de la escuela**
+> (modelo LakeGoetheSee), no Supabase. El análisis de integración con ese
+> modelo está en [`integracion-sql-server.md`](integracion-sql-server.md).
+> Este documento queda como referencia del análisis de opciones y de las
+> fases generales (que siguen aplicando: doble backend en /dev/, migración
+> con verificación, corte controlado).
+
 ## 1. Por qué migrar
 
 Hoy el spreadsheet (`Alumnos` ~1.500 filas, `Mapas` ~260, `Cargas` ~3.300)
