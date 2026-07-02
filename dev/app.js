@@ -1493,7 +1493,7 @@ function requireScriptUrl() {
   return url;
 }
 
-async function sheetsGet(action, { attempts = 2 } = {}) {
+async function sheetsGet(action, { attempts = 2, params = {} } = {}) {
   const url = requireScriptUrl();
   if (!url) return null;
   if (!requireGoogleLogin()) return null;
@@ -1502,7 +1502,7 @@ async function sheetsGet(action, { attempts = 2 } = {}) {
   let lastError;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
-      const payload = await jsonpRequest(url, { action, idToken: googleIdToken, t: Date.now() });
+      const payload = await jsonpRequest(url, { action, ...params, idToken: googleIdToken, t: Date.now() });
       if (!payload.ok) throw new Error(payload.error || "Respuesta invalida");
       return payload.data;
     } catch (error) {
@@ -1552,9 +1552,10 @@ async function confirmSavedCargas(expectedRows, { attempts = 3 } = {}) {
 
   // El POST es asincrono (iframe) y Sheets tarda en reflejar la escritura, asi
   // que reintentamos la lectura antes de declarar un guardado parcial.
+  // Solo se leen las cargas del curso actual (todas las esperadas son de el).
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     await wait(attempt === 1 ? 1800 : 2500);
-    const remoteRows = normalizeCargaRows(await sheetsGet("cargas"));
+    const remoteRows = normalizeCargaRows(await sheetsGet("cargas", { params: { curso: courseFilter.value } }));
     const remoteIds = new Set(remoteRows.map(row => row.CargaID).filter(Boolean));
     missing = expectedIds.filter(id => !remoteIds.has(id));
     confirmed = expectedIds.length - missing.length;
@@ -1765,10 +1766,10 @@ function startGoogleLogin() {
 function attemptOneTap() {
   if (googleIdToken || !window.google?.accounts?.id) return;
   try {
-    google.accounts.id.prompt(notification => {
-      const status = notification?.getMomentType?.() || "";
-      debugLog("One Tap:", status || "(sin estado)", notification?.getNotDisplayedReason?.() || notification?.getSkippedReason?.() || "");
-    });
+    // Sin callback de estado: esos metodos estan deprecados con FedCM y
+    // Google loguea un warning si se usan.
+    google.accounts.id.prompt();
+    debugLog("One Tap solicitado");
   } catch (error) {
     debugLog("One Tap no disponible:", error.message);
   }
@@ -1796,12 +1797,17 @@ function normalizeSheetRows(rows) {
   });
 }
 
-// Trae todos los datos. Intenta la accion 'bootstrap' (1 sola llamada al
-// backend optimizado). Si el backend todavia no expone bootstrap, cae a las
-// cuatro lecturas individuales en serie, para que la app funcione igual.
-async function fetchBootstrapBundle() {
+// Cursos cuyas cargas ya se trajeron del backend (se piden por curso: la
+// solapa Cargas crecio tanto que bajarla entera rompe la transferencia).
+let cargasLoadedCursos = new Set();
+
+// Trae los datos maestros + las cargas SOLO del curso indicado. Intenta la
+// accion 'bootstrap' (1 sola llamada). Si el backend no la expone, cae a las
+// lecturas individuales en serie.
+async function fetchBootstrapBundle(curso = "") {
+  const params = curso ? { curso } : {};
   try {
-    const data = await sheetsGet("bootstrap");
+    const data = await sheetsGet("bootstrap", { params });
     if (data && (data.alumnos || data.mapas || data.cargas || data.admins)) {
       return {
         alumnos: data.alumnos || [],
@@ -1819,7 +1825,7 @@ async function fetchBootstrapBundle() {
   // concurrentes del mismo usuario; en paralelo las ultimas superan el timeout).
   const alumnos = await sheetsGet("alumnos");
   const mapas = await sheetsGet("mapas");
-  const cargas = await sheetsGet("cargas");
+  const cargas = await sheetsGet("cargas", { params });
   let admins = [];
   try {
     admins = await sheetsGet("admins");
@@ -1834,20 +1840,51 @@ async function fetchBootstrapBundle() {
   };
 }
 
+// Carga perezosa de las cargas de un curso la primera vez que se lo visita.
+async function ensureCargasForCourse(curso) {
+  if (!curso || cargasLoadedCursos.has(curso)) return;
+  if (!scriptUrl() || !googleClientId() || !googleIdToken) return;
+  cargasLoadedCursos.add(curso);
+  saveStatus.textContent = `Cargando registros de ${curso}...`;
+  try {
+    const remote = normalizeCargaRows(normalizeSheetRows(await sheetsGet("cargas", { params: { curso } })))
+      .filter(row => row.DNI && row.ConsignaID);
+    // Reemplaza las cargas de ese curso y reaplica sobre la grilla actual,
+    // preservando el borrador local (se aplica despues, y pisa lo remoto).
+    cargas = cargas.filter(row => row.Curso !== curso).concat(remote);
+    debugLog(`Cargas de ${curso}:`, remote.length, "filas");
+    applyRemoteCargasForSelection();
+    restoreLocalDraft(false);
+    renderBody();
+    saveStatus.textContent = "Sheets sincronizado";
+  } catch (error) {
+    cargasLoadedCursos.delete(curso);
+    saveStatus.textContent = `No se pudieron cargar los registros de ${curso}`;
+    debugLog(`ensureCargasForCourse ${curso} fallo:`, error.message);
+  }
+}
+
 async function syncFromSheets({ showLoading = false } = {}) {
   if (showLoading) {
     showSaveModal("Cargando", "Sincronizando alumnos, mapas, cargas y permisos con Google Sheets. La primera carga puede tardar hasta un minuto.", "Sincronizando...");
   }
   saveStatus.textContent = "Sincronizando Sheets...";
   try {
-    const bundle = await fetchBootstrapBundle();
-    debugLog("Sync recibido | alumnos:", bundle.alumnos.length, "| mapas:", bundle.mapas.length, "| cargas:", bundle.cargas.length, "| admins:", bundle.admins.length);
+    // Las cargas viajan solo para el curso visible; el resto se pide al
+    // entrar a cada curso (ensureCargasForCourse).
+    const cursoInicial = courseFilter.value || "";
+    const bundle = await fetchBootstrapBundle(cursoInicial);
+    debugLog("Sync recibido | alumnos:", bundle.alumnos.length, "| mapas:", bundle.mapas.length, "| cargas:", bundle.cargas.length, `(curso: ${cursoInicial || "ninguno"})`, "| admins:", bundle.admins.length);
     applyImportedAlumnos(normalizeSheetRows(bundle.alumnos));
     applyImportedMapas(normalizeSheetRows(bundle.mapas));
     applyImportedCargas(normalizeSheetRows(bundle.cargas));
     applyImportedAdmins(bundle.admins);
+    cargasLoadedCursos = new Set(cursoInicial ? [cursoInicial] : []);
     saveStatus.textContent = admins.length ? "Sheets sincronizado" : "Sheets sincronizado - falta publicar Admins";
     if (showLoading) closeSaveModal();
+    // El curso autoseleccionado tras importar alumnos puede no ser el del
+    // bootstrap: traer sus cargas si falta.
+    ensureCargasForCourse(courseFilter.value);
   } catch (error) {
     saveStatus.textContent = "Error al sincronizar Sheets";
     if (/no autorizado/i.test(error.message)) {
@@ -2160,6 +2197,7 @@ courseFilter.addEventListener("input", () => {
   renderHeader();
   renderBody();
   restoreLocalDraft();
+  ensureCargasForCourse(courseFilter.value);
 });
 
 subjectFilter.addEventListener("input", () => {
