@@ -531,6 +531,12 @@ td select:focus {
   background: rgba(29, 42, 37, .42);
 }
 
+/* El modal de avisos/guardado se apila sobre cualquier otro modal abierto
+   (esta antes en el DOM que el de consignas, el z-index decide). */
+#saveModal {
+  z-index: 300;
+}
+
 .modal {
   width: min(980px, 100%);
   max-height: min(760px, calc(100vh - 48px));
@@ -705,6 +711,11 @@ td select:focus {
 .criteria-row input[type="checkbox"] {
   width: 16px;
   height: 16px;
+}
+
+/* La escala conceptual reemplaza Puntaje max / Incremento / Orden en la fila */
+.criteria-row .escala-field {
+  grid-column: span 3;
 }
 
 .dev-badge {
