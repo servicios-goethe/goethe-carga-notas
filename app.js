@@ -351,6 +351,49 @@ function validCriteriaConfig(list = consignas) {
 // enteramente desde el front; se persiste con el mismo upsertMapas.
 let draftConsignas = [];
 let criteriaMode = "edit";
+// Seleccion PROPIA del modal (independiente de los filtros de carga): el
+// admin administra cualquier materia/evaluacion sin mover la grilla.
+let editingMateria = "";
+let editingEvaluacion = "";
+// Precarga del formulario "nueva evaluacion" (usada por Duplicar).
+let newEvaluationPrefillMateria = "";
+let newEvaluationPrefillNombre = "";
+
+// Consignas de una evaluacion, para cualquier materia/evaluacion (sin
+// depender del curso seleccionado): unifica por ConsignaID entre cursos.
+function consignasForEvaluation(materiaNombre, evaluacionNombre) {
+  const rows = mapas.filter(row =>
+    row.MateriaNombre === materiaNombre &&
+    row.EvaluacionNombre === evaluacionNombre
+  );
+  const byId = new Map();
+  rows.forEach(row => {
+    const key = normalizeText(row.ConsignaID);
+    if (!byId.has(key)) byId.set(key, row);
+  });
+  return [...byId.values()]
+    .sort((a, b) => Number(a.ConsignaOrden) - Number(b.ConsignaOrden))
+    .map((row, index) => mapRowToConsigna({
+      consignaorden: row.ConsignaOrden,
+      consignaid: row.ConsignaID,
+      consignacontenido: row.ConsignaContenido,
+      consignapuntajemax: row.ConsignaPuntajeMax,
+      consignaincremento: row.ConsignaIncremento,
+      consignaactiva: row.ConsignaActiva,
+      competencia: row.Competencia,
+      eje: row.Eje
+    }, index));
+}
+
+function materiasDisponibles() {
+  return unique(mapas.map(row => row.MateriaNombre)).sort(naturalSorter.compare);
+}
+
+function evaluacionesDeMateria(materiaNombre) {
+  return unique(mapas
+    .filter(row => row.MateriaNombre === materiaNombre)
+    .map(row => row.EvaluacionNombre));
+}
 
 function blankConsigna(orden) {
   return {
@@ -712,42 +755,56 @@ function renderCriteriaEditor() {
   const { curso } = selectedContext();
   const isNew = criteriaMode === "new";
   const evaluationRows = isNew ? [] : mapas.filter(row =>
-    row.MateriaNombre === subjectFilter.value &&
-    row.EvaluacionNombre === evaluationFilter.value &&
-    row.EvaluacionID === currentEvaluationId()
+    row.MateriaNombre === editingMateria &&
+    row.EvaluacionNombre === editingEvaluacion
   );
   const selectedCourses = unique(evaluationRows.map(row => row.Curso).filter(Boolean));
   const groupedCourses = cursosPorNivel();
   const expiration = evaluationRows.find(row => row.FechaCaducidad)?.FechaCaducidad || "";
   const periodo = evaluationRows.find(row => row.PeriodoEvaluacion)?.PeriodoEvaluacion || "";
   const knownPeriods = unique(mapas.map(row => row.PeriodoEvaluacion));
-  const knownMaterias = unique(mapas.map(row => row.MateriaNombre));
+  const knownMaterias = materiasDisponibles();
 
   const title = document.getElementById("criteriaTitle");
-  if (title) {
-    title.textContent = isNew
-      ? "Nueva evaluación"
-      : `Consignas · ${subjectFilter.value || "Sin materia"} · ${evaluationFilter.value || "Sin evaluación"}`;
-  }
+  if (title) title.textContent = isNew ? "Nueva evaluación" : "Administrar mapas";
 
-  const newEvaluationFields = isNew ? `
+  const headerFields = isNew ? `
     <div class="criteria-config">
       <label>
         Materia (existente o nueva)
-        <input id="criteriaMateria" type="text" list="materiaSuggestions" placeholder="Matemática" value="${escapeHTML(subjectFilter.value || "")}">
+        <input id="criteriaMateria" type="text" list="materiaSuggestions" placeholder="Matemática" value="${escapeHTML(newEvaluationPrefillMateria || "")}">
         <datalist id="materiaSuggestions">
           ${knownMaterias.map(m => `<option value="${escapeHTML(m)}"></option>`).join("")}
         </datalist>
       </label>
       <label>
         Nombre de la evaluación
-        <input id="criteriaEvaluacion" type="text" placeholder="Evaluación Final" value="">
+        <input id="criteriaEvaluacion" type="text" placeholder="Evaluación Final" value="${escapeHTML(newEvaluationPrefillNombre || "")}">
       </label>
     </div>
-  ` : "";
+  ` : `
+    <div class="criteria-config">
+      <label>
+        Materia
+        <select id="criteriaMateriaSelect">
+          ${knownMaterias.map(m => `<option value="${escapeHTML(m)}"${m === editingMateria ? " selected" : ""}>${escapeHTML(m)}</option>`).join("")}
+        </select>
+      </label>
+      <label>
+        Evaluación
+        <select id="criteriaEvaluacionSelect">
+          ${evaluacionesDeMateria(editingMateria).map(e => `<option value="${escapeHTML(e)}"${e === editingEvaluacion ? " selected" : ""}>${escapeHTML(e)}</option>`).join("")}
+        </select>
+      </label>
+      <label>
+        &nbsp;
+        <button id="duplicateEvaluationBtn" type="button">Duplicar como nueva</button>
+      </label>
+    </div>
+  `;
 
   criteriaList.innerHTML = `
-    ${newEvaluationFields}
+    ${headerFields}
     <div class="criteria-config">
       <label>
         Aplicar a cursos
@@ -860,12 +917,15 @@ function upsertMapRowsFromCriteria() {
       return null;
     }
   } else {
-    materiaNombre = subjectFilter.value;
-    evaluacionNombre = evaluationFilter.value;
+    materiaNombre = editingMateria;
+    evaluacionNombre = editingEvaluacion;
+    if (!materiaNombre || !evaluacionNombre) {
+      alert("Selecciona una materia y una evaluación para editar.");
+      return null;
+    }
     base = mapas.find(row =>
       row.MateriaNombre === materiaNombre &&
-      row.EvaluacionNombre === evaluacionNombre &&
-      row.EvaluacionID === currentEvaluationId()
+      row.EvaluacionNombre === evaluacionNombre
     ) || {};
   }
 
@@ -2160,11 +2220,25 @@ document.getElementById("loadsFile").addEventListener("change", event => {
   event.target.value = "";
 });
 
+function loadEditingDraft() {
+  draftConsignas = consignasForEvaluation(editingMateria, editingEvaluacion).map(c => ({ ...c }));
+  if (!draftConsignas.length) draftConsignas = [blankConsigna(1)];
+}
+
 function openCriteriaModal(mode) {
   criteriaMode = mode;
-  draftConsignas = mode === "new"
-    ? [blankConsigna(1)]
-    : consignas.map(c => ({ ...c }));
+  if (mode === "new") {
+    newEvaluationPrefillMateria = newEvaluationPrefillMateria || subjectFilter.value || "";
+    draftConsignas = [blankConsigna(1)];
+  } else {
+    // Arranca en lo que este mirando la grilla (comodo para el docente-admin),
+    // pero desde el selector del modal se navega a cualquier materia/evaluacion.
+    const materias = materiasDisponibles();
+    editingMateria = materias.includes(subjectFilter.value) ? subjectFilter.value : (materias[0] || "");
+    const evaluaciones = evaluacionesDeMateria(editingMateria);
+    editingEvaluacion = evaluaciones.includes(evaluationFilter.value) ? evaluationFilter.value : (evaluaciones[0] || "");
+    loadEditingDraft();
+  }
   renderCriteriaEditor();
   criteriaModal.hidden = false;
 }
@@ -2174,13 +2248,47 @@ document.getElementById("criteriaBtn").addEventListener("click", () => {
     alert("Solo administradores pueden editar consignas.");
     return;
   }
-  // Sin evaluacion seleccionada (mapa vacio) se abre directo en modo creacion.
-  openCriteriaModal(evaluationFilter.value ? "edit" : "new");
+  newEvaluationPrefillMateria = "";
+  newEvaluationPrefillNombre = "";
+  // Sin mapas cargados se abre directo en modo creacion.
+  openCriteriaModal(materiasDisponibles().length ? "edit" : "new");
 });
 
 document.getElementById("newEvaluationBtn").addEventListener("click", () => {
   if (criteriaMode === "new") return;
-  openCriteriaModal("new");
+  newEvaluationPrefillMateria = editingMateria || subjectFilter.value || "";
+  newEvaluationPrefillNombre = "";
+  draftConsignas = [blankConsigna(1)];
+  criteriaMode = "new";
+  renderCriteriaEditor();
+});
+
+// Selector propio del modal (cambiar materia/evaluacion recarga el borrador)
+// y duplicacion: delegados porque el contenido del modal se re-renderiza.
+criteriaList.addEventListener("change", event => {
+  if (event.target.id === "criteriaMateriaSelect") {
+    editingMateria = event.target.value;
+    editingEvaluacion = evaluacionesDeMateria(editingMateria)[0] || "";
+    loadEditingDraft();
+    renderCriteriaEditor();
+  } else if (event.target.id === "criteriaEvaluacionSelect") {
+    editingEvaluacion = event.target.value;
+    loadEditingDraft();
+    renderCriteriaEditor();
+  }
+});
+
+criteriaList.addEventListener("click", event => {
+  if (event.target.id !== "duplicateEvaluationBtn") return;
+  // Clona las consignas de la evaluacion elegida hacia una evaluacion nueva:
+  // la forma rapida de extender mapas a otros niveles/materias/periodos.
+  newEvaluationPrefillMateria = editingMateria;
+  newEvaluationPrefillNombre = `${editingEvaluacion} (copia)`;
+  draftConsignas = consignasForEvaluation(editingMateria, editingEvaluacion)
+    .map((c, index) => ({ ...c, consignaId: "", scoreKey: `NEW-${Date.now()}-${index}` }));
+  if (!draftConsignas.length) draftConsignas = [blankConsigna(1)];
+  criteriaMode = "new";
+  renderCriteriaEditor();
 });
 
 document.getElementById("closeCriteriaBtn").addEventListener("click", () => {
