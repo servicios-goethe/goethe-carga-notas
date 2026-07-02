@@ -818,8 +818,7 @@ function renderCriteriaEditor() {
   const groupedCourses = cursosPorNivel();
   const expiration = evaluationRows.find(row => row.FechaCaducidad)?.FechaCaducidad || "";
   const periodo = evaluationRows.find(row => row.PeriodoEvaluacion)?.PeriodoEvaluacion || "";
-  const escala = evaluationRows.find(row => normalizeText(row.EscalaConceptual))?.EscalaConceptual ||
-    escalaDeMateria(isNew ? newEvaluationPrefillMateria : editingMateria);
+  const knownEscalas = unique(mapas.map(row => normalizeText(row.EscalaConceptual)));
   const knownPeriods = unique(mapas.map(row => row.PeriodoEvaluacion));
   const knownMaterias = materiasDisponibles();
 
@@ -893,11 +892,10 @@ function renderCriteriaEditor() {
           ${knownPeriods.map(p => `<option value="${escapeHTML(p)}"></option>`).join("")}
         </datalist>
       </label>
-      <label>
-        Escala conceptual (para consignas de tipo conceptual)
-        <input id="criteriaEscala" type="text" placeholder="Logrado | En proceso | Iniciado" value="${escapeHTML(escala)}">
-      </label>
     </div>
+    <datalist id="escalaSuggestions">
+      ${knownEscalas.map(e => `<option value="${escapeHTML(e)}"></option>`).join("")}
+    </datalist>
     ${draftConsignas.map((c, index) => `
     <div class="criteria-row">
       <label>
@@ -923,6 +921,12 @@ function renderCriteriaEditor() {
         Eje
         <input type="text" value="${escapeHTML(c.eje || "")}" data-criteria="${index}" data-field="eje" placeholder="Nivel superior">
       </label>
+      ${isConceptual(c) ? `
+      <label class="escala-field">
+        Escala (separada por comas)
+        <input type="text" list="escalaSuggestions" value="${escapeHTML(c.escala || "")}" data-criteria="${index}" data-field="escala" placeholder="Logrado, En proceso, Iniciado">
+      </label>
+      ` : `
       <label>
         Puntaje max.
         <input type="number" min="0.5" step="0.5" value="${c.max}" data-criteria="${index}" data-field="max">
@@ -935,6 +939,7 @@ function renderCriteriaEditor() {
         Orden
         <input type="number" min="1" step="1" value="${c.id}" data-criteria="${index}" data-field="id">
       </label>
+      `}
     </div>
   `).join("")}
   `;
@@ -966,7 +971,7 @@ function upsertMapRowsFromCriteria() {
   const isNew = criteriaMode === "new";
   const selectedCourses = selectedCriteriaCourses();
   if (!selectedCourses.length) {
-    alert("Selecciona al menos un curso.");
+    showNotice("Selecciona al menos un curso.");
     return null;
   }
 
@@ -978,18 +983,18 @@ function upsertMapRowsFromCriteria() {
     materiaNombre = normalizeText(document.getElementById("criteriaMateria")?.value);
     evaluacionNombre = normalizeText(document.getElementById("criteriaEvaluacion")?.value);
     if (!materiaNombre || !evaluacionNombre) {
-      alert("Completa la materia y el nombre de la evaluación.");
+      showNotice("Completa la materia y el nombre de la evaluación.");
       return null;
     }
     if (evaluationExists(materiaNombre, evaluacionNombre)) {
-      alert(`Ya existe "${evaluacionNombre}" en ${materiaNombre}. Seleccionala en los filtros para editarla.`);
+      showNotice(`Ya existe "${evaluacionNombre}" en ${materiaNombre}. Seleccionala en los filtros para editarla.`);
       return null;
     }
   } else {
     materiaNombre = editingMateria;
     evaluacionNombre = editingEvaluacion;
     if (!materiaNombre || !evaluacionNombre) {
-      alert("Selecciona una materia y una evaluación para editar.");
+      showNotice("Selecciona una materia y una evaluación para editar.");
       return null;
     }
     base = mapas.find(row =>
@@ -1000,9 +1005,11 @@ function upsertMapRowsFromCriteria() {
 
   const expiration = document.getElementById("criteriaExpiration")?.value || "";
   const periodoEvaluacion = normalizeText(document.getElementById("criteriaPeriod")?.value);
-  const escalaConceptual = normalizeEscalaInput(document.getElementById("criteriaEscala")?.value);
-  if (draftConsignas.some(c => c.tipo === "conceptual") && !escalaConceptual) {
-    alert("Hay consignas de tipo conceptual: completa la escala (ej. Logrado | En proceso | Iniciado).");
+  const sinEscala = draftConsignas
+    .filter(c => c.tipo === "conceptual" && !normalizeEscalaInput(c.escala))
+    .map(c => `Consigna ${c.id}`);
+  if (sinEscala.length) {
+    showNotice(`Completa la escala de: ${sinEscala.join(", ")} (ej. Logrado, En proceso, Iniciado).`, "Falta la escala conceptual");
     return null;
   }
   const materiaId = base.MateriaID ||
@@ -1046,7 +1053,7 @@ function upsertMapRowsFromCriteria() {
         Eje: normalizeText(consigna.eje),
         PeriodoEvaluacion: periodoEvaluacion,
         TipoCalificacion: consigna.tipo === "conceptual" ? "conceptual" : "numerica",
-        EscalaConceptual: escalaConceptual
+        EscalaConceptual: consigna.tipo === "conceptual" ? normalizeEscalaInput(consigna.escala) : ""
       };
       mapas.push(row);
       changedRows.push(row);
@@ -1113,7 +1120,7 @@ function applyImportedAlumnos(rows) {
   const dnis = mapped.map(row => row.DNI);
   const duplicates = dnis.filter((dni, index) => dnis.indexOf(dni) !== index);
   if (duplicates.length) {
-    alert(`Hay DNI duplicados: ${unique(duplicates).join(", ")}`);
+    showNotice(`Hay DNI duplicados: ${unique(duplicates).join(", ")}`);
     return;
   }
 
@@ -1416,7 +1423,7 @@ function requireGoogleLogin() {
     return false;
   }
   if (googleIdToken) return true;
-  alert("Primero inicia sesion con Google.");
+  showNotice("Primero inicia sesion con Google.");
   return false;
 }
 
@@ -1465,10 +1472,17 @@ function closeSaveModal() {
   saveModal.hidden = true;
 }
 
+// Aviso simple en modal propio (reemplaza los alert() nativos del navegador).
+// El modal de aviso esta despues en el DOM que el de consignas, asi que se
+// apila encima cuando este esta abierto.
+function showNotice(message, title = "Atención") {
+  showSaveModal(title, message, "Revisar", true);
+}
+
 function requireScriptUrl() {
   const url = scriptUrl();
   if (!url) {
-    alert("Primero pega y guarda la URL de Apps Script.");
+    showNotice("Primero pega y guarda la URL de Apps Script.");
     connectionModal.hidden = false;
     return "";
   }
@@ -1840,7 +1854,7 @@ async function syncFromSheets({ showLoading = false } = {}) {
     if (showLoading) {
       showSaveModal("No se pudo sincronizar", error.message, "Error", true);
     } else {
-      alert(`No se pudo sincronizar: ${error.message}`);
+      showNotice(`No se pudo sincronizar: ${error.message}`);
     }
   }
 }
@@ -2171,7 +2185,7 @@ periodFilter.addEventListener("input", () => {
 
 document.getElementById("saveBtn").addEventListener("click", () => {
   if (!scriptUrl() || !googleIdToken) {
-    alert("Para guardar, primero inicia sesion y conecta Google Sheets.");
+    showNotice("Para guardar, primero inicia sesion y conecta Google Sheets.");
     return;
   }
   if (currentLoadIsClosed()) {
@@ -2194,7 +2208,7 @@ document.getElementById("saveBtn").addEventListener("click", () => {
 
 document.getElementById("finishBtn").addEventListener("click", () => {
   if (!scriptUrl() || !googleIdToken) {
-    alert("Para finalizar, primero inicia sesion y conecta Google Sheets.");
+    showNotice("Para finalizar, primero inicia sesion y conecta Google Sheets.");
     return;
   }
   if (currentLoadIsClosed()) {
@@ -2223,7 +2237,7 @@ document.getElementById("exportBtn").addEventListener("click", () => {
 });
 document.getElementById("exportMapsBtn").addEventListener("click", () => {
   if (!isAdmin) {
-    alert("Solo administradores pueden exportar mapas.");
+    showNotice("Solo administradores pueden exportar mapas.");
     return;
   }
   exportMapas();
@@ -2249,11 +2263,11 @@ document.getElementById("saveConnectionBtn").addEventListener("click", () => {
   const url = normalizeText(scriptUrlInput.value);
   const clientId = normalizeText(googleClientIdInput.value);
   if (!url.startsWith("https://script.google.com/")) {
-    alert("Pega una URL valida de Apps Script.");
+    showNotice("Pega una URL valida de Apps Script.");
     return;
   }
   if (!clientId.endsWith(".apps.googleusercontent.com")) {
-    alert("Pega un Google Client ID valido.");
+    showNotice("Pega un Google Client ID valido.");
     return;
   }
   localStorage.setItem(scriptUrlStorageKey, url);
@@ -2325,7 +2339,7 @@ function openCriteriaModal(mode) {
 
 document.getElementById("criteriaBtn").addEventListener("click", () => {
   if (!isAdmin) {
-    alert("Solo administradores pueden editar consignas.");
+    showNotice("Solo administradores pueden editar consignas.");
     return;
   }
   newEvaluationPrefillMateria = "";
@@ -2385,8 +2399,23 @@ criteriaList.addEventListener("input", event => {
   const field = target.dataset.field;
   if (!Number.isInteger(index) || !field || !draftConsignas[index]) return;
   if (field === "active") draftConsignas[index][field] = target.checked;
-  else if (["titulo", "competencia", "eje", "tipo"].includes(field)) draftConsignas[index][field] = target.value;
+  else if (["titulo", "competencia", "eje", "tipo", "escala"].includes(field)) draftConsignas[index][field] = target.value;
   else draftConsignas[index][field] = Number(target.value);
+
+  // Cambiar el tipo intercambia los campos de la fila (escala <-> puntajes):
+  // re-render preservando lo tipeado en el formulario superior.
+  if (field === "tipo") {
+    const consigna = draftConsignas[index];
+    if (consigna.tipo === "conceptual" && !normalizeText(consigna.escala)) {
+      const materiaRef = criteriaMode === "new"
+        ? (document.getElementById("criteriaMateria")?.value || "")
+        : editingMateria;
+      consigna.escala = escalaDeMateria(materiaRef);
+    }
+    const saved = captureCriteriaFormState();
+    renderCriteriaEditor();
+    restoreCriteriaFormState(saved);
+  }
 });
 
 criteriaList.addEventListener("change", event => {
@@ -2412,7 +2441,6 @@ function captureCriteriaFormState() {
     evaluacion: document.getElementById("criteriaEvaluacion")?.value,
     expiration: document.getElementById("criteriaExpiration")?.value,
     period: document.getElementById("criteriaPeriod")?.value,
-    escala: document.getElementById("criteriaEscala")?.value,
     courses: selectedCriteriaCourses()
   };
 }
@@ -2427,7 +2455,6 @@ function restoreCriteriaFormState(saved) {
   setValue("criteriaEvaluacion", saved.evaluacion);
   setValue("criteriaExpiration", saved.expiration);
   setValue("criteriaPeriod", saved.period);
-  setValue("criteriaEscala", saved.escala);
   const courseSet = new Set(saved.courses);
   criteriaList.querySelectorAll("[data-course]").forEach(input => {
     input.checked = courseSet.has(input.dataset.course);
@@ -2466,15 +2493,15 @@ function focusEvaluationInFilters(materiaNombre, evaluacionNombre, courses) {
 
 document.getElementById("applyCriteriaBtn").addEventListener("click", () => {
   if (!isAdmin) {
-    alert("Solo administradores pueden aplicar cambios en consignas.");
+    showNotice("Solo administradores pueden aplicar cambios en consignas.");
     return;
   }
   if (!draftConsignas.some(c => c.active)) {
-    alert("Debe quedar al menos una consigna visible.");
+    showNotice("Debe quedar al menos una consigna visible.");
     return;
   }
   if (!validCriteriaConfig(draftConsignas)) {
-    alert("Revisa las consignas: cada una debe tener nombre, orden, puntaje maximo e incremento validos.");
+    showNotice("Revisa las consignas: cada una debe tener nombre, orden, puntaje maximo e incremento validos.");
     return;
   }
   sortConsignasByOrder(draftConsignas);
@@ -2493,7 +2520,7 @@ document.getElementById("applyCriteriaBtn").addEventListener("click", () => {
       })
       .catch(error => {
         saveStatus.textContent = "Mapas actualizados localmente";
-        alert(`No se pudo guardar Mapas en Sheets: ${error.message}`);
+        showNotice(`No se pudo guardar Mapas en Sheets: ${error.message}`);
       });
   }
 });
