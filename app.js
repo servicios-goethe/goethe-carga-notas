@@ -40,6 +40,7 @@ const APP_CONFIG = {
   scriptUrl: "https://script.google.com/macros/s/AKfycbxrwC0TARz15BwQqwGVzJEqs_ZnLlBy4Q681fim94px4NlrgTVNgHMzkJw9bS3DUkUi/exec",
   googleClientId: "225474160522-7rk742a5qubfaf0te9uqiokfr4umj7al.apps.googleusercontent.com"
 };
+const APP_VERSION = "2026-07-02.3";
 const ALLOWED_DOMAIN = "goethe.edu.ar";
 const storagePrefix = "goethe-mapa-aprendizajes";
 const scriptUrlStorageKey = `${storagePrefix}||apps-script-url`;
@@ -2623,6 +2624,7 @@ window.goethe = {
   },
   status() {
     const info = {
+      version: APP_VERSION,
       scriptUrl: scriptUrl() || "(sin configurar)",
       googleClientId: googleClientId() || "(sin configurar)",
       logueado: Boolean(googleIdToken),
@@ -2653,6 +2655,11 @@ window.goethe = {
       .catch(error => { console.error(`[goethe] ${action} FALLO:`, error.message); throw error; });
   }
 };
+
+// Sello de version SIEMPRE visible en consola (independiente del debug):
+// permite verificar de un vistazo que el navegador/iframe no este sirviendo
+// una version cacheada tras un deploy.
+console.info(`[goethe] Mapa de Aprendizajes v${APP_VERSION}`);
 
 refreshConfigVisibility();
 refreshAdminState();
