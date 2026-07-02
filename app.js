@@ -21,7 +21,11 @@ const demoMapas = [
   ["MAP-EP2-MAT-DIAG", "MAT", "Matematica", "EVA-001", "Diagnostico de numeracion", "EP2B", "2026", "C01", "Representacion de numeros", "1", "0.5", "1", "TRUE"],
   ["MAP-EP2-MAT-DIAG", "MAT", "Matematica", "EVA-001", "Diagnostico de numeracion", "EP2B", "2026", "C02", "Orden de la serie numerica", "2", "0.5", "2", "TRUE"]
 ].map(([MapaID, MateriaID, MateriaNombre, EvaluacionID, EvaluacionNombre, Curso, AnioLectivo, ConsignaID, ConsignaContenido, ConsignaPuntajeMax, ConsignaIncremento, ConsignaOrden, ConsignaActiva]) => ({
-  MapaID, MateriaID, MateriaNombre, EvaluacionID, EvaluacionNombre, Nivel: "EP", Curso, AnioLectivo, ConsignaID, ConsignaContenido, ConsignaPuntajeMax, ConsignaIncremento, ConsignaOrden, ConsignaActiva, FechaCaducidad: ""
+  MapaID, MateriaID, MateriaNombre, EvaluacionID, EvaluacionNombre, Nivel: "EP", Curso, AnioLectivo, ConsignaID, ConsignaContenido, ConsignaPuntajeMax, ConsignaIncremento, ConsignaOrden, ConsignaActiva, FechaCaducidad: "",
+  // Jerarquia demo: consignas 1-4 eje Numeracion, 5-8 eje Operaciones.
+  Competencia: "Resolucion de problemas",
+  Eje: Number(ConsignaOrden) <= 4 ? "Numeracion" : "Operaciones",
+  PeriodoEvaluacion: "1er Trimestre"
 }));
 
 let alumnos = [];
@@ -61,6 +65,8 @@ const table = document.getElementById("gradeTable");
 const courseFilter = document.getElementById("courseFilter");
 const subjectFilter = document.getElementById("subjectFilter");
 const evaluationFilter = document.getElementById("evaluationFilter");
+const periodFilter = document.getElementById("periodFilter");
+const periodLabel = document.getElementById("periodLabel");
 const searchInput = document.getElementById("searchInput");
 const showIncomplete = document.getElementById("showIncomplete");
 const criteriaModal = document.getElementById("criteriaModal");
@@ -202,6 +208,35 @@ function currentEvaluationId() {
   )?.EvaluacionID || evaluacion;
 }
 
+const ALL_PERIODS = "__todos__";
+
+function selectedPeriod() {
+  const value = periodFilter?.value || "";
+  return value === ALL_PERIODS ? "" : value;
+}
+
+// Una fila sin periodo aplica a todos los periodos (compatibilidad con mapas
+// anteriores a la jerarquia Competencia/Eje/Periodo).
+function periodMatches(row) {
+  const periodo = selectedPeriod();
+  return !periodo || !row.PeriodoEvaluacion || row.PeriodoEvaluacion === periodo;
+}
+
+function populatePeriodFilter(periodos, selectedValue) {
+  if (!periodLabel || !periodFilter) return;
+  if (!periodos.length) {
+    periodFilter.innerHTML = "";
+    periodLabel.hidden = true;
+    return;
+  }
+  periodLabel.hidden = false;
+  const options = [[ALL_PERIODS, "Todos"], ...periodos.map(p => [p, p])];
+  periodFilter.innerHTML = options
+    .map(([value, text]) => `<option value="${escapeHTML(value)}">${escapeHTML(text)}</option>`)
+    .join("");
+  if (selectedValue && periodos.includes(selectedValue)) periodFilter.value = selectedValue;
+}
+
 function stateKey() {
   const { curso, materia, evaluacion } = selectedContext();
   return `${curso}||${materia}||${evaluacion}`;
@@ -271,14 +306,16 @@ function mapRowToConsigna(row, index) {
     titulo: normalizeText(row.consignacontenido) || `Consigna ${index + 1}`,
     max: Number(String(row.consignapuntajemax).replace(",", ".")) || 1,
     step: Number(String(row.consignaincremento).replace(",", ".")) || 0.5,
-    active: !["false", "0", "no", "n"].includes(normalizeText(row.consignaactiva).toLowerCase())
+    active: !["false", "0", "no", "n"].includes(normalizeText(row.consignaactiva).toLowerCase()),
+    competencia: normalizeText(row.competencia),
+    eje: normalizeText(row.eje)
   };
 }
 
 function syncConsignasFromSelection() {
   const { curso, materia, evaluacion } = selectedContext();
   const rows = mapas
-    .filter(row => rowAppliesToCourse(row, curso) && rowIsActiveByDate(row) && row.MateriaNombre === materia && row.EvaluacionNombre === evaluacion)
+    .filter(row => rowAppliesToCourse(row, curso) && rowIsActiveByDate(row) && row.MateriaNombre === materia && row.EvaluacionNombre === evaluacion && periodMatches(row))
     .sort((a, b) => Number(a.ConsignaOrden) - Number(b.ConsignaOrden));
 
   consignas = rows.map((row, index) => mapRowToConsigna({
@@ -287,7 +324,9 @@ function syncConsignasFromSelection() {
     consignacontenido: row.ConsignaContenido,
     consignapuntajemax: row.ConsignaPuntajeMax,
     consignaincremento: row.ConsignaIncremento,
-    consignaactiva: row.ConsignaActiva
+    consignaactiva: row.ConsignaActiva,
+    competencia: row.Competencia,
+    eje: row.Eje
   }, index));
 }
 
@@ -415,12 +454,45 @@ function refreshFilters({ keepSelection = true } = {}) {
     .map(row => row.MateriaNombre));
   populateSelect(subjectFilter, materias, keepSelection ? previous.materia : "");
 
-  const evaluaciones = unique(mapas
+  const periodos = unique(mapas
     .filter(row => rowAppliesToCourse(row, courseFilter.value) && rowIsActiveByDate(row) && row.MateriaNombre === subjectFilter.value)
+    .map(row => row.PeriodoEvaluacion));
+  populatePeriodFilter(periodos, keepSelection ? selectedPeriod() : "");
+
+  const evaluaciones = unique(mapas
+    .filter(row => rowAppliesToCourse(row, courseFilter.value) && rowIsActiveByDate(row) && row.MateriaNombre === subjectFilter.value && periodMatches(row))
     .map(row => row.EvaluacionNombre));
   populateSelect(evaluationFilter, evaluaciones, keepSelection ? previous.evaluacion : "");
 
   syncConsignasFromSelection();
+}
+
+// Celdas de agrupacion: fusiona valores adyacentes iguales con colspan
+// (Competencia y Eje son niveles superiores de la consigna).
+function groupedHeaderCells(values, className) {
+  const cells = [];
+  let index = 0;
+  while (index < values.length) {
+    let span = 1;
+    while (index + span < values.length && values[index + span] === values[index]) span += 1;
+    cells.push(`<th class="${className}" colspan="${span}" title="${escapeHTML(values[index])}">${escapeHTML(values[index])}</th>`);
+    index += span;
+  }
+  return cells.join("");
+}
+
+function groupRowHTML(label, values, className) {
+  return `
+    <tr class="group-row">
+      <th class="sticky-col header-empty"></th>
+      <th class="student-col group-label">${escapeHTML(label)}</th>
+      <th class="header-empty"></th>
+      ${groupedHeaderCells(values, className)}
+      <th class="header-empty"></th>
+      <th class="header-empty"></th>
+      <th class="header-empty"></th>
+    </tr>
+  `;
 }
 
 function renderHeader() {
@@ -433,7 +505,13 @@ function renderHeader() {
       <span class="criteria-name">${escapeHTML(c.titulo)}</span>
     </th>
   `).join("");
+  const competencias = visible.map(c => c.competencia || "");
+  const ejes = visible.map(c => c.eje || "");
+  const competenciaRow = competencias.some(Boolean) ? groupRowHTML("Competencia", competencias, "criteria-group competencia-cell") : "";
+  const ejeRow = ejes.some(Boolean) ? groupRowHTML("Eje", ejes, "criteria-group eje-cell") : "";
   thead.innerHTML = `
+    ${competenciaRow}
+    ${ejeRow}
     <tr>
       <th class="sticky-col">Nr.</th>
       <th class="student-col student-head">Nombre</th>
@@ -443,7 +521,7 @@ function renderHeader() {
       <th>Calificacion</th>
       <th>Observaciones</th>
     </tr>
-    <tr>
+    <tr class="max-row">
       <th class="sticky-col header-empty"></th>
       <th class="student-col max-label">Valor maximo</th>
       <th class="header-empty"></th>
@@ -602,6 +680,8 @@ function renderCriteriaEditor() {
   const selectedCourses = unique(evaluationRows.map(row => row.Curso).filter(Boolean));
   const groupedCourses = cursosPorNivel();
   const expiration = evaluationRows.find(row => row.FechaCaducidad)?.FechaCaducidad || "";
+  const periodo = evaluationRows.find(row => row.PeriodoEvaluacion)?.PeriodoEvaluacion || "";
+  const knownPeriods = unique(mapas.map(row => row.PeriodoEvaluacion));
 
   criteriaList.innerHTML = `
     <div class="criteria-config">
@@ -627,6 +707,13 @@ function renderCriteriaEditor() {
         Fecha de caducidad
         <input id="criteriaExpiration" type="date" value="${expiration}">
       </label>
+      <label>
+        Período de evaluación
+        <input id="criteriaPeriod" type="text" list="periodSuggestions" placeholder="1er Trimestre" value="${escapeHTML(periodo)}">
+        <datalist id="periodSuggestions">
+          ${knownPeriods.map(p => `<option value="${escapeHTML(p)}"></option>`).join("")}
+        </datalist>
+      </label>
     </div>
     ${consignas.map((c, index) => `
     <div class="criteria-row">
@@ -637,6 +724,14 @@ function renderCriteriaEditor() {
       <label>
         Contenido
         <input type="text" value="${c.titulo}" data-criteria="${index}" data-field="titulo">
+      </label>
+      <label>
+        Competencia
+        <input type="text" value="${escapeHTML(c.competencia || "")}" data-criteria="${index}" data-field="competencia" placeholder="Nivel superior">
+      </label>
+      <label>
+        Eje
+        <input type="text" value="${escapeHTML(c.eje || "")}" data-criteria="${index}" data-field="eje" placeholder="Nivel superior">
       </label>
       <label>
         Puntaje max.
@@ -667,6 +762,7 @@ function upsertMapRowsFromCriteria() {
   }
 
   const expiration = document.getElementById("criteriaExpiration")?.value || "";
+  const periodoEvaluacion = normalizeText(document.getElementById("criteriaPeriod")?.value);
   const baseRows = mapas.filter(row =>
     row.MateriaNombre === subjectFilter.value &&
     row.EvaluacionNombre === evaluationFilter.value &&
@@ -707,7 +803,10 @@ function upsertMapRowsFromCriteria() {
         ConsignaIncremento: String(consigna.step),
         ConsignaOrden: String(index + 1),
         ConsignaActiva: consigna.active ? "TRUE" : "FALSE",
-        FechaCaducidad: expiration
+        FechaCaducidad: expiration,
+        Competencia: normalizeText(consigna.competencia),
+        Eje: normalizeText(consigna.eje),
+        PeriodoEvaluacion: periodoEvaluacion
       };
       mapas.push(row);
       changedRows.push(row);
@@ -799,7 +898,10 @@ function applyImportedMapas(rows) {
     ConsignaIncremento: row.consignaincremento,
     ConsignaOrden: row.consignaorden,
     ConsignaActiva: row.consignaactiva || "TRUE",
-    FechaCaducidad: row.fechacaducidad || row.caducidad || ""
+    FechaCaducidad: row.fechacaducidad || row.caducidad || "",
+    Competencia: row.competencia || "",
+    Eje: row.eje || "",
+    PeriodoEvaluacion: row.periodoevaluacion || row.periodo || ""
   })).filter(row => row.MateriaNombre && row.EvaluacionNombre && row.ConsignaContenido);
 
   state = {};
@@ -1014,7 +1116,58 @@ function decodeJwtPayload(token) {
   }
 }
 
+// --- Sesion persistente (app embebida) ---
+// El ID token de Google dura ~1 hora. Lo guardamos en sessionStorage (por
+// pestaña, no queda en maquinas compartidas) para que una recarga dentro del
+// sitio institucional no obligue a re-loguear.
+const idTokenStorageKey = `${storagePrefix}||session-token`;
+
+function tokenSecondsLeft(token = googleIdToken) {
+  const exp = Number(decodeJwtPayload(token).exp);
+  if (!Number.isFinite(exp)) return 0;
+  return Math.floor(exp - Date.now() / 1000);
+}
+
+function persistSession(token) {
+  try { sessionStorage.setItem(idTokenStorageKey, token); } catch {}
+}
+
+function clearStoredSession() {
+  googleIdToken = "";
+  docenteEmail = "";
+  try { sessionStorage.removeItem(idTokenStorageKey); } catch {}
+}
+
+function restoreStoredSession() {
+  try {
+    const token = sessionStorage.getItem(idTokenStorageKey) || "";
+    if (!token) return false;
+    const payload = decodeJwtPayload(token);
+    const email = String(payload.email || "").toLowerCase();
+    if (!email.endsWith(`@${ALLOWED_DOMAIN}`)) return false;
+    if (tokenSecondsLeft(token) < 120) return false;
+    googleIdToken = token;
+    docenteEmail = email;
+    debugLog("Sesion restaurada de sessionStorage |", email, "| vence en", tokenSecondsLeft(token), "s");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// La sesion vencio o el backend la rechazo: volver al gate y reintentar One Tap.
+function handleSessionExpired(message = `Tu sesion vencio. Volve a ingresar con tu cuenta @${ALLOWED_DOMAIN}.`) {
+  clearStoredSession();
+  loginGate.hidden = false;
+  setLoginMessage(message, "warning");
+  prepareGoogleButton();
+}
+
 function requireGoogleLogin() {
+  if (googleIdToken && tokenSecondsLeft() < 30) {
+    handleSessionExpired();
+    return false;
+  }
   if (googleIdToken) return true;
   alert("Primero inicia sesion con Google.");
   return false;
@@ -1263,6 +1416,7 @@ function handleGoogleCredential(credentialResponse) {
 
   googleIdToken = token;
   docenteEmail = email;
+  persistSession(token);
   debugLog("Login OK |", docenteEmail, "| aud:", payload.aud, "| hd:", payload.hd, "| token:", maskToken(googleIdToken));
   saveStatus.textContent = `Sesion: ${docenteEmail}`;
   refreshAdminState();
@@ -1285,12 +1439,16 @@ function ensureGoogleIdentityInitialized() {
 
   if (googleInitializedClientId === clientId) return true;
 
+  // auto_select: si el docente tiene UNA sola sesion de Google (la
+  // institucional, caso tipico dentro del sitio Goethe) el login es silencioso,
+  // sin clicks. FedCM + itp_support: el flujo sigue andando cuando el navegador
+  // bloquea cookies de terceros (Chrome las esta eliminando; Safari ya).
   google.accounts.id.initialize({
     client_id: clientId,
-    auto_select: false,
+    auto_select: true,
     hd: ALLOWED_DOMAIN,
-    use_fedcm_for_prompt: false,
-    use_fedcm_for_button: false,
+    itp_support: true,
+    use_fedcm_for_prompt: true,
     callback: handleGoogleCredential
   });
   googleInitializedClientId = clientId;
@@ -1336,10 +1494,26 @@ function startGoogleLogin() {
   }, 4500);
 }
 
+// One Tap: pide la credencial sin click. Con auto_select y una unica sesion
+// institucional, el docente entra directo. Si Google no puede mostrarlo
+// (iframe sin permiso, cookies), el boton oficial queda como fallback.
+function attemptOneTap() {
+  if (googleIdToken || !window.google?.accounts?.id) return;
+  try {
+    google.accounts.id.prompt(notification => {
+      const status = notification?.getMomentType?.() || "";
+      debugLog("One Tap:", status || "(sin estado)", notification?.getNotDisplayedReason?.() || notification?.getSkippedReason?.() || "");
+    });
+  } catch (error) {
+    debugLog("One Tap no disponible:", error.message);
+  }
+}
+
 function prepareGoogleButton(attempt = 0) {
   if (!scriptUrl() || !googleClientId() || googleIdToken) return;
   if (renderGoogleButton()) {
     setLoginMessage("Usa el boton oficial de Google para ingresar con tu cuenta @goethe.edu.ar.");
+    attemptOneTap();
     return;
   }
   if (attempt < 20) {
@@ -1411,6 +1585,11 @@ async function syncFromSheets({ showLoading = false } = {}) {
     if (showLoading) closeSaveModal();
   } catch (error) {
     saveStatus.textContent = "Error al sincronizar Sheets";
+    if (/no autorizado/i.test(error.message)) {
+      if (showLoading) closeSaveModal();
+      handleSessionExpired();
+      return;
+    }
     if (showLoading) {
       showSaveModal("No se pudo sincronizar", error.message, "Error", true);
     } else {
@@ -1631,6 +1810,13 @@ function exportVisibleGrid() {
   const { curso, materia, evaluacion } = selectedContext();
   const criteria = activeConsignas();
   const headers = ["Nr.", "Nombre", "Estado", ...criteria.map(c => c.titulo), "Puntaje", "Calificacion", "Observaciones"];
+  const extraRows = [];
+  if (criteria.some(c => c.competencia)) {
+    extraRows.push(["", "Competencia", "", ...criteria.map(c => c.competencia || ""), "", "", ""]);
+  }
+  if (criteria.some(c => c.eje)) {
+    extraRows.push(["", "Eje", "", ...criteria.map(c => c.eje || ""), "", "", ""]);
+  }
   const maxRow = ["", "Valor maximo", "", ...criteria.map(c => numericCell(c.max)), "", "", ""];
   const rows = currentRows().map((alumno, index) => {
     const totals = studentTotals(alumno);
@@ -1645,11 +1831,11 @@ function exportVisibleGrid() {
     ];
   });
   const filename = `grilla_${curso}_${materia}_${evaluacion}.xlsx`.replace(/\s+/g, "_");
-  downloadXlsx(filename, `${curso} ${materia}`, [headers, maxRow, ...rows]);
+  downloadXlsx(filename, `${curso} ${materia}`, [headers, ...extraRows, maxRow, ...rows]);
 }
 
 function exportMapas() {
-  const headers = ["MapaID", "MateriaID", "MateriaNombre", "EvaluacionID", "EvaluacionNombre", "Nivel", "Curso", "AnioLectivo", "ConsignaID", "ConsignaContenido", "ConsignaPuntajeMax", "ConsignaIncremento", "ConsignaOrden", "ConsignaActiva", "FechaCaducidad"];
+  const headers = ["MapaID", "MateriaID", "MateriaNombre", "EvaluacionID", "EvaluacionNombre", "Nivel", "Curso", "AnioLectivo", "ConsignaID", "ConsignaContenido", "ConsignaPuntajeMax", "ConsignaIncremento", "ConsignaOrden", "ConsignaActiva", "FechaCaducidad", "Competencia", "Eje", "PeriodoEvaluacion"];
   const rows = mapas.map(row => headers.map(header => row[header] ?? ""));
   const csv = [headers, ...rows].map(row => row.map(value => `"${String(value).replaceAll('"', '""')}"`).join(",")).join("\n");
   triggerDownload(csvBlob(csv), "mapas_actualizados.csv");
@@ -1720,6 +1906,13 @@ subjectFilter.addEventListener("input", () => {
 
 evaluationFilter.addEventListener("input", () => {
   syncConsignasFromSelection();
+  renderHeader();
+  renderBody();
+  restoreLocalDraft();
+});
+
+periodFilter.addEventListener("input", () => {
+  refreshFilters();
   renderHeader();
   renderBody();
   restoreLocalDraft();
@@ -1883,7 +2076,7 @@ criteriaList.addEventListener("input", event => {
   const field = target.dataset.field;
   if (!Number.isInteger(index) || !field) return;
   if (field === "active") consignas[index][field] = target.checked;
-  else if (field === "titulo") consignas[index][field] = target.value;
+  else if (["titulo", "competencia", "eje"].includes(field)) consignas[index][field] = target.value;
   else consignas[index][field] = Number(target.value);
 });
 
@@ -1910,7 +2103,9 @@ document.getElementById("addCriteriaBtn").addEventListener("click", () => {
     titulo: "Nueva consigna",
     max: 1,
     step: 0.5,
-    active: true
+    active: true,
+    competencia: "",
+    eje: ""
   });
   normalizeConsignas();
   renderCriteriaEditor();
@@ -2014,11 +2209,29 @@ if (window.self !== window.top) {
   setLoginMessage("Usa una cuenta @goethe.edu.ar. Si el selector de Google no aparece, revisa que el navegador permita ventanas emergentes y cookies.");
 }
 
+// Identificacion visual del entorno de pruebas (carpeta /dev/ o localhost).
+const IS_DEV_ENV = /\/dev\/|-dev\//.test(window.location.pathname) ||
+  ["localhost", "127.0.0.1"].includes(window.location.hostname);
+if (IS_DEV_ENV) {
+  document.title = `[DEV] ${document.title}`;
+  const badge = document.createElement("div");
+  badge.className = "dev-badge";
+  badge.textContent = "ENTORNO DE PRUEBAS";
+  document.body.appendChild(badge);
+}
+
 if (scriptUrl() && googleClientId()) {
   alumnos = [];
   mapas = [];
-  saveStatus.textContent = "Esperando login";
-  prepareGoogleButton();
+  if (restoreStoredSession()) {
+    saveStatus.textContent = `Sesion: ${docenteEmail}`;
+    refreshAdminState();
+    loginGate.hidden = true;
+    syncFromSheets({ showLoading: true });
+  } else {
+    saveStatus.textContent = "Esperando login";
+    prepareGoogleButton();
+  }
 } else {
   alumnos = demoAlumnos;
   mapas = demoMapas;

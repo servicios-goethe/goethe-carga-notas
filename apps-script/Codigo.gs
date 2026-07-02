@@ -2,7 +2,7 @@ const SPREADSHEET_ID = "1GXOSs1tNHBbv4AOYhOpgrOB4Jz5p6QU3HTqBzufFXDc";
 const ALLOWED_DOMAIN = "goethe.edu.ar";
 // Client ID del frontend (Google Identity). Se usa para validar el `aud` del idToken.
 const GOOGLE_CLIENT_ID = "225474160522-7rk742a5qubfaf0te9uqiokfr4umj7al.apps.googleusercontent.com";
-const API_VERSION = "2026-06-26-bootstrap-token";
+const API_VERSION = "2026-07-02-jerarquia-consignas";
 
 const SHEETS = {
   alumnos: "Alumnos",
@@ -11,11 +11,14 @@ const SHEETS = {
   admins: "Admins"
 };
 
+// Competencia/Eje/PeriodoEvaluacion van AL FINAL a proposito: asi el orden de
+// las columnas existentes en la solapa Mapas no cambia y el frontend viejo
+// (produccion) sigue funcionando sin enterarse de las columnas nuevas.
 const MAPAS_HEADERS = [
   "MapaID", "MateriaID", "MateriaNombre", "EvaluacionID", "EvaluacionNombre",
   "Nivel", "Curso", "AnioLectivo", "ConsignaID", "ConsignaContenido",
   "ConsignaPuntajeMax", "ConsignaIncremento", "ConsignaOrden",
-  "ConsignaActiva", "FechaCaducidad"
+  "ConsignaActiva", "FechaCaducidad", "Competencia", "Eje", "PeriodoEvaluacion"
 ];
 
 const CARGAS_HEADERS = [

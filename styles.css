@@ -329,7 +329,14 @@ thead th {
   font-weight: 700;
 }
 
-thead tr:nth-child(2) th {
+/* Las filas de agrupacion (Competencia/Eje) no fijan top: se desplazan con el
+   scroll y evitan solaparse con la fila de titulos, que si queda fija. */
+thead tr.group-row th {
+  top: auto;
+  z-index: 25;
+}
+
+thead tr.max-row th {
   top: 74px;
   background: #e7f0eb;
   color: var(--green-dark);
@@ -391,15 +398,39 @@ thead .student-col {
   box-shadow: 0 0 0 1px var(--line);
 }
 
-thead tr:nth-child(2) .student-col {
+thead tr.max-row .student-col {
   background: #e7f0eb;
   color: var(--green-dark);
 }
 
-thead tr:nth-child(2) .sticky-col,
-thead tr:nth-child(2) .header-empty {
+thead tr.max-row .sticky-col,
+thead tr.max-row .header-empty {
   background: #e7f0eb;
   color: var(--green-dark);
+  box-shadow: 0 0 0 1px var(--line);
+}
+
+/* Filas de agrupacion (Competencia / Eje, niveles superiores de la consigna) */
+thead tr.group-row .criteria-group {
+  background: #f3f8f5;
+  color: var(--green-dark);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 8px;
+  white-space: normal;
+  border-bottom: 2px solid var(--green);
+  box-shadow: 0 0 0 1px var(--line);
+}
+
+thead tr.group-row .group-label {
+  background: #f3f8f5;
+  color: var(--green-dark);
+  font-size: 12px;
+}
+
+thead tr.group-row .sticky-col,
+thead tr.group-row .header-empty {
+  background: #f3f8f5;
   box-shadow: 0 0 0 1px var(--line);
 }
 
@@ -648,7 +679,7 @@ td select:focus {
 
 .criteria-row {
   display: grid;
-  grid-template-columns: 76px minmax(220px, 1fr) 110px 110px 92px;
+  grid-template-columns: 76px minmax(180px, 1.2fr) minmax(130px, 1fr) minmax(130px, 1fr) 96px 96px 72px;
   gap: 10px;
   align-items: end;
   padding: 10px 0;
@@ -662,6 +693,22 @@ td select:focus {
 .criteria-row input[type="checkbox"] {
   width: 16px;
   height: 16px;
+}
+
+.dev-badge {
+  position: fixed;
+  left: 12px;
+  bottom: 12px;
+  z-index: 999;
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: #c47f17;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
 }
 
 .criteria-row .active-field {
