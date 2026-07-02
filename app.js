@@ -330,8 +330,8 @@ function syncConsignasFromSelection() {
   }, index));
 }
 
-function validCriteriaConfig() {
-  return consignas.every(c =>
+function validCriteriaConfig(list = consignas) {
+  return list.every(c =>
     Number.isFinite(c.id) &&
     Number.isFinite(c.max) &&
     Number.isFinite(c.step) &&
@@ -340,6 +340,44 @@ function validCriteriaConfig() {
     c.step > 0 &&
     c.titulo.trim()
   );
+}
+
+// --- Editor de consignas ---
+// El modal trabaja sobre un BORRADOR (draftConsignas): "Aplicar cambios"
+// confirma, cerrar descarta. Antes editaba el array global en vivo y cerrar
+// sin aplicar dejaba la grilla modificada.
+// Modo "edit": edita la evaluacion seleccionada en los filtros.
+// Modo "new": crea una evaluacion nueva (y materia nueva si hace falta)
+// enteramente desde el front; se persiste con el mismo upsertMapas.
+let draftConsignas = [];
+let criteriaMode = "edit";
+
+function blankConsigna(orden) {
+  return {
+    id: orden,
+    scoreKey: `NEW-${Date.now()}-${orden}`,
+    consignaId: "",
+    titulo: "",
+    max: 1,
+    step: 0.5,
+    active: true,
+    competencia: "",
+    eje: ""
+  };
+}
+
+// Asigna ConsignaID C01, C02... a las consignas nuevas del borrador,
+// respetando los IDs ya usados (los existentes no cambian: las cargas
+// guardadas los referencian).
+function assignConsignaIds(list) {
+  const used = new Set(list.map(c => c.consignaId).filter(Boolean));
+  let next = 1;
+  list.forEach(consigna => {
+    if (consigna.consignaId) return;
+    while (used.has(`C${String(next).padStart(2, "0")}`)) next += 1;
+    consigna.consignaId = `C${String(next).padStart(2, "0")}`;
+    used.add(consigna.consignaId);
+  });
 }
 
 function alumnoNombre(alumno) {
@@ -672,7 +710,8 @@ function currentRows() {
 
 function renderCriteriaEditor() {
   const { curso } = selectedContext();
-  const evaluationRows = mapas.filter(row =>
+  const isNew = criteriaMode === "new";
+  const evaluationRows = isNew ? [] : mapas.filter(row =>
     row.MateriaNombre === subjectFilter.value &&
     row.EvaluacionNombre === evaluationFilter.value &&
     row.EvaluacionID === currentEvaluationId()
@@ -682,8 +721,33 @@ function renderCriteriaEditor() {
   const expiration = evaluationRows.find(row => row.FechaCaducidad)?.FechaCaducidad || "";
   const periodo = evaluationRows.find(row => row.PeriodoEvaluacion)?.PeriodoEvaluacion || "";
   const knownPeriods = unique(mapas.map(row => row.PeriodoEvaluacion));
+  const knownMaterias = unique(mapas.map(row => row.MateriaNombre));
+
+  const title = document.getElementById("criteriaTitle");
+  if (title) {
+    title.textContent = isNew
+      ? "Nueva evaluación"
+      : `Consignas · ${subjectFilter.value || "Sin materia"} · ${evaluationFilter.value || "Sin evaluación"}`;
+  }
+
+  const newEvaluationFields = isNew ? `
+    <div class="criteria-config">
+      <label>
+        Materia (existente o nueva)
+        <input id="criteriaMateria" type="text" list="materiaSuggestions" placeholder="Matemática" value="${escapeHTML(subjectFilter.value || "")}">
+        <datalist id="materiaSuggestions">
+          ${knownMaterias.map(m => `<option value="${escapeHTML(m)}"></option>`).join("")}
+        </datalist>
+      </label>
+      <label>
+        Nombre de la evaluación
+        <input id="criteriaEvaluacion" type="text" placeholder="Evaluación Final" value="">
+      </label>
+    </div>
+  ` : "";
 
   criteriaList.innerHTML = `
+    ${newEvaluationFields}
     <div class="criteria-config">
       <label>
         Aplicar a cursos
@@ -715,7 +779,7 @@ function renderCriteriaEditor() {
         </datalist>
       </label>
     </div>
-    ${consignas.map((c, index) => `
+    ${draftConsignas.map((c, index) => `
     <div class="criteria-row">
       <label>
         Visible
@@ -723,7 +787,7 @@ function renderCriteriaEditor() {
       </label>
       <label>
         Contenido
-        <input type="text" value="${c.titulo}" data-criteria="${index}" data-field="titulo">
+        <input type="text" value="${escapeHTML(c.titulo)}" data-criteria="${index}" data-field="titulo" placeholder="Contenido de la consigna">
       </label>
       <label>
         Competencia
@@ -754,27 +818,67 @@ function selectedCriteriaCourses() {
   return [...criteriaList.querySelectorAll("[data-course]:checked")].map(input => input.dataset.course);
 }
 
+function evaluationExists(materiaNombre, evaluacionNombre) {
+  return mapas.some(row =>
+    normalizeHeader(row.MateriaNombre) === normalizeHeader(materiaNombre) &&
+    normalizeHeader(row.EvaluacionNombre) === normalizeHeader(evaluacionNombre)
+  );
+}
+
+function uniqueEvaluacionId(evaluacionNombre) {
+  const baseId = evaluacionNombre.toUpperCase().replace(/\s+/g, "-");
+  let id = baseId;
+  let suffix = 2;
+  while (mapas.some(row => row.EvaluacionID === id)) {
+    id = `${baseId}-${suffix}`;
+    suffix += 1;
+  }
+  return id;
+}
+
 function upsertMapRowsFromCriteria() {
+  const isNew = criteriaMode === "new";
   const selectedCourses = selectedCriteriaCourses();
   if (!selectedCourses.length) {
     alert("Selecciona al menos un curso.");
     return null;
   }
 
+  let materiaNombre;
+  let evaluacionNombre;
+  let base = {};
+
+  if (isNew) {
+    materiaNombre = normalizeText(document.getElementById("criteriaMateria")?.value);
+    evaluacionNombre = normalizeText(document.getElementById("criteriaEvaluacion")?.value);
+    if (!materiaNombre || !evaluacionNombre) {
+      alert("Completa la materia y el nombre de la evaluación.");
+      return null;
+    }
+    if (evaluationExists(materiaNombre, evaluacionNombre)) {
+      alert(`Ya existe "${evaluacionNombre}" en ${materiaNombre}. Seleccionala en los filtros para editarla.`);
+      return null;
+    }
+  } else {
+    materiaNombre = subjectFilter.value;
+    evaluacionNombre = evaluationFilter.value;
+    base = mapas.find(row =>
+      row.MateriaNombre === materiaNombre &&
+      row.EvaluacionNombre === evaluacionNombre &&
+      row.EvaluacionID === currentEvaluationId()
+    ) || {};
+  }
+
   const expiration = document.getElementById("criteriaExpiration")?.value || "";
   const periodoEvaluacion = normalizeText(document.getElementById("criteriaPeriod")?.value);
-  const baseRows = mapas.filter(row =>
-    row.MateriaNombre === subjectFilter.value &&
-    row.EvaluacionNombre === evaluationFilter.value &&
-    row.EvaluacionID === currentEvaluationId()
-  );
-  const base = baseRows[0] || {};
-  const materiaNombre = subjectFilter.value;
-  const evaluacionNombre = evaluationFilter.value;
-  const materiaId = base.MateriaID || materiaNombre.toUpperCase().slice(0, 3);
-  const evaluacionId = base.EvaluacionID || evaluacionNombre.toUpperCase().replace(/\s+/g, "-");
+  const materiaId = base.MateriaID ||
+    mapas.find(row => normalizeHeader(row.MateriaNombre) === normalizeHeader(materiaNombre))?.MateriaID ||
+    materiaNombre.toUpperCase().slice(0, 3);
+  const evaluacionId = base.EvaluacionID || uniqueEvaluacionId(evaluacionNombre);
   const mapaId = base.MapaID || `MAP-${evaluacionId}`;
   const anioLectivo = base.AnioLectivo || String(new Date().getFullYear());
+
+  assignConsignaIds(draftConsignas);
 
   const targetCourseSet = new Set(selectedCourses);
   mapas = mapas.filter(row => !(
@@ -787,7 +891,7 @@ function upsertMapRowsFromCriteria() {
   const changedRows = [];
 
   selectedCourses.forEach(course => {
-    consignas.forEach((consigna, index) => {
+    draftConsignas.forEach((consigna, index) => {
       const row = {
         MapaID: mapaId,
         MateriaID: materiaId,
@@ -797,7 +901,7 @@ function upsertMapRowsFromCriteria() {
         Nivel: nivelFromCurso(course),
         Curso: course,
         AnioLectivo: anioLectivo,
-        ConsignaID: consigna.consignaId || String(consigna.scoreKey),
+        ConsignaID: consigna.consignaId,
         ConsignaContenido: consigna.titulo,
         ConsignaPuntajeMax: String(consigna.max),
         ConsignaIncremento: String(consigna.step),
@@ -813,11 +917,14 @@ function upsertMapRowsFromCriteria() {
     });
   });
 
-  return changedRows;
+  return { changedRows, materiaNombre, evaluacionNombre, courses: selectedCourses };
 }
 
-function normalizeConsignas() {
-  consignas = consignas.sort((a, b) => a.id - b.id);
+function sortConsignasByOrder(list) {
+  list.sort((a, b) => a.id - b.id);
+}
+
+function backfillScoreKeys() {
   Object.values(state).flat().forEach(alumno => {
     consignas.forEach(consigna => {
       if (!(consigna.scoreKey in alumno.scores)) alumno.scores[consigna.scoreKey] = "";
@@ -2053,13 +2160,27 @@ document.getElementById("loadsFile").addEventListener("change", event => {
   event.target.value = "";
 });
 
+function openCriteriaModal(mode) {
+  criteriaMode = mode;
+  draftConsignas = mode === "new"
+    ? [blankConsigna(1)]
+    : consignas.map(c => ({ ...c }));
+  renderCriteriaEditor();
+  criteriaModal.hidden = false;
+}
+
 document.getElementById("criteriaBtn").addEventListener("click", () => {
   if (!isAdmin) {
     alert("Solo administradores pueden editar consignas.");
     return;
   }
-  renderCriteriaEditor();
-  criteriaModal.hidden = false;
+  // Sin evaluacion seleccionada (mapa vacio) se abre directo en modo creacion.
+  openCriteriaModal(evaluationFilter.value ? "edit" : "new");
+});
+
+document.getElementById("newEvaluationBtn").addEventListener("click", () => {
+  if (criteriaMode === "new") return;
+  openCriteriaModal("new");
 });
 
 document.getElementById("closeCriteriaBtn").addEventListener("click", () => {
@@ -2074,10 +2195,10 @@ criteriaList.addEventListener("input", event => {
   const target = event.target;
   const index = Number(target.dataset.criteria);
   const field = target.dataset.field;
-  if (!Number.isInteger(index) || !field) return;
-  if (field === "active") consignas[index][field] = target.checked;
-  else if (["titulo", "competencia", "eje"].includes(field)) consignas[index][field] = target.value;
-  else consignas[index][field] = Number(target.value);
+  if (!Number.isInteger(index) || !field || !draftConsignas[index]) return;
+  if (field === "active") draftConsignas[index][field] = target.checked;
+  else if (["titulo", "competencia", "eje"].includes(field)) draftConsignas[index][field] = target.value;
+  else draftConsignas[index][field] = Number(target.value);
 });
 
 criteriaList.addEventListener("change", event => {
@@ -2091,51 +2212,94 @@ criteriaList.addEventListener("change", event => {
 
   if (event.target.type === "checkbox") {
     const index = Number(event.target.dataset.criteria);
-    if (Number.isInteger(index)) consignas[index].active = event.target.checked;
+    if (Number.isInteger(index) && draftConsignas[index]) draftConsignas[index].active = event.target.checked;
   }
 });
 
-document.getElementById("addCriteriaBtn").addEventListener("click", () => {
-  consignas.push({
-    id: consignas.length + 1,
-    scoreKey: `NEW-${Date.now()}`,
-    consignaId: `NEW-${Date.now()}`,
-    titulo: "Nueva consigna",
-    max: 1,
-    step: 0.5,
-    active: true,
-    competencia: "",
-    eje: ""
+// El formulario superior se reconstruye al re-renderizar (p. ej. al agregar
+// una consigna): capturamos lo tipeado para no perderlo.
+function captureCriteriaFormState() {
+  return {
+    materia: document.getElementById("criteriaMateria")?.value,
+    evaluacion: document.getElementById("criteriaEvaluacion")?.value,
+    expiration: document.getElementById("criteriaExpiration")?.value,
+    period: document.getElementById("criteriaPeriod")?.value,
+    courses: selectedCriteriaCourses()
+  };
+}
+
+function restoreCriteriaFormState(saved) {
+  if (!saved) return;
+  const setValue = (id, value) => {
+    const input = document.getElementById(id);
+    if (input && value !== undefined) input.value = value;
+  };
+  setValue("criteriaMateria", saved.materia);
+  setValue("criteriaEvaluacion", saved.evaluacion);
+  setValue("criteriaExpiration", saved.expiration);
+  setValue("criteriaPeriod", saved.period);
+  const courseSet = new Set(saved.courses);
+  criteriaList.querySelectorAll("[data-course]").forEach(input => {
+    input.checked = courseSet.has(input.dataset.course);
   });
-  normalizeConsignas();
+}
+
+document.getElementById("addCriteriaBtn").addEventListener("click", () => {
+  const saved = captureCriteriaFormState();
+  const nextOrden = draftConsignas.reduce((max, c) => Math.max(max, Number(c.id) || 0), 0) + 1;
+  draftConsignas.push(blankConsigna(nextOrden));
+  sortConsignasByOrder(draftConsignas);
   renderCriteriaEditor();
+  restoreCriteriaFormState(saved);
 });
+
+// Deja los filtros apuntando a la evaluacion recien creada/editada.
+function focusEvaluationInFilters(materiaNombre, evaluacionNombre, courses) {
+  refreshFilters();
+  if (courses.length && !courses.includes(courseFilter.value)) {
+    courseFilter.value = courses[0];
+    refreshFilters();
+  }
+  if ([...subjectFilter.options].some(option => option.value === materiaNombre)) {
+    subjectFilter.value = materiaNombre;
+    refreshFilters();
+  }
+  if (periodFilter && !periodLabel.hidden && selectedPeriod()) {
+    periodFilter.value = ALL_PERIODS;
+    refreshFilters();
+  }
+  if ([...evaluationFilter.options].some(option => option.value === evaluacionNombre)) {
+    evaluationFilter.value = evaluacionNombre;
+    syncConsignasFromSelection();
+  }
+}
 
 document.getElementById("applyCriteriaBtn").addEventListener("click", () => {
   if (!isAdmin) {
     alert("Solo administradores pueden aplicar cambios en consignas.");
     return;
   }
-  if (!activeConsignas().length) {
+  if (!draftConsignas.some(c => c.active)) {
     alert("Debe quedar al menos una consigna visible.");
     return;
   }
-  if (!validCriteriaConfig()) {
+  if (!validCriteriaConfig(draftConsignas)) {
     alert("Revisa las consignas: cada una debe tener nombre, orden, puntaje maximo e incremento validos.");
     return;
   }
-  normalizeConsignas();
-  const changedMapRows = upsertMapRowsFromCriteria();
-  if (!changedMapRows) return;
-  refreshFilters();
+  sortConsignasByOrder(draftConsignas);
+  const result = upsertMapRowsFromCriteria();
+  if (!result) return;
+  focusEvaluationInFilters(result.materiaNombre, result.evaluacionNombre, result.courses);
+  backfillScoreKeys();
   renderHeader();
   renderBody();
   criteriaModal.hidden = true;
   saveStatus.textContent = "Mapas actualizados";
   if (scriptUrl()) {
-    sheetsPost("upsertMapas", changedMapRows)
-      .then(result => {
-        saveStatus.textContent = `Mapas guardados en Sheets (${result?.rows || 0} filas actualizadas)`;
+    sheetsPost("upsertMapas", result.changedRows)
+      .then(postResult => {
+        saveStatus.textContent = `Mapas guardados en Sheets (${postResult?.rows || 0} filas actualizadas)`;
       })
       .catch(error => {
         saveStatus.textContent = "Mapas actualizados localmente";
