@@ -468,7 +468,11 @@ function alumnoNombre(alumno) {
 }
 
 function alumnosDelCurso() {
-  return alumnos.filter(alumno => alumno.Curso === courseFilter.value);
+  // Orden alfabetico (Apellido, Nombres) con collator español: independiente
+  // del orden en que esten cargados en la solapa Alumnos.
+  return alumnos
+    .filter(alumno => alumno.Curso === courseFilter.value)
+    .sort((a, b) => naturalSorter.compare(alumnoNombre(a), alumnoNombre(b)));
 }
 
 function sortCourses(courses) {
