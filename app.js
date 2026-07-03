@@ -44,7 +44,7 @@ const APP_CONFIG = {
 // fuerza a los navegadores/iframes a bajar el archivo nuevo en vez de servir
 // una copia cacheada. Sin esto, un iframe embebido (Treffpunkt) puede seguir
 // mostrando una version vieja por minutos u horas.
-const APP_VERSION = "2026-07-03.1";
+const APP_VERSION = "2026-07-03.2";
 const ALLOWED_DOMAIN = "goethe.edu.ar";
 const storagePrefix = "goethe-mapa-aprendizajes";
 const scriptUrlStorageKey = `${storagePrefix}||apps-script-url`;
@@ -190,6 +190,7 @@ function selectedContext() {
 }
 
 function rowAppliesToCourse(row, curso) {
+  if (!curso) return false;
   if (row.Curso === curso) return true;
   if (!row.Curso || row.Curso === "*") return !row.Nivel || row.Nivel === nivelFromCurso(curso);
   return false;
@@ -491,14 +492,6 @@ function todosLosCursos() {
   return sortCourses(unique(alumnos.map(alumno => alumno.Curso)));
 }
 
-function cursoTieneMapaVigente(curso) {
-  return mapas.some(row => rowAppliesToCourse(row, curso) && rowIsActiveByDate(row));
-}
-
-function cursosDisponibles() {
-  return sortCourses(todosLosCursos().filter(cursoTieneMapaVigente));
-}
-
 function nivelFromCurso(curso) {
   return alumnos.find(alumno => alumno.Curso === curso)?.Nivel || "";
 }
@@ -548,18 +541,36 @@ function ensureGridState() {
   restoreLocalDraft(false);
 }
 
-function populateSelect(select, values, selectedValue) {
-  select.innerHTML = values.map(value => `<option value="${escapeHTML(value)}">${escapeHTML(value)}</option>`).join("");
+// El param `placeholder` gatilla un selector "obligatorio": antepone una
+// opcion vacia y NO auto-selecciona la primera opcion real, para forzar al
+// docente a elegir explicitamente (a diferencia del comportamiento normal
+// del <select>, que si no se asigna .value cae solo en la primera opcion).
+function populateSelect(select, values, selectedValue, placeholder) {
+  const placeholderOption = placeholder ? `<option value="">${escapeHTML(placeholder)}</option>` : "";
+  select.innerHTML = placeholderOption + values.map(value => `<option value="${escapeHTML(value)}">${escapeHTML(value)}</option>`).join("");
   if (selectedValue && values.includes(selectedValue)) select.value = selectedValue;
 }
 
-function populateCourseSelect(selectedValue) {
-  const grouped = agruparCursosPorNivel(cursosDisponibles());
+// Cursos que efectivamente tienen mapa vigente para una materia+evaluacion
+// puntual (lo que ve el docente para elegir Curso, ya acotado a "los cursos
+// de la materia" en vez de todos los de la escuela).
+function cursosParaMateriaEvaluacion(materiaNombre, evaluacionNombre) {
+  const rows = mapas.filter(row =>
+    row.MateriaNombre === materiaNombre &&
+    row.EvaluacionNombre === evaluacionNombre &&
+    rowIsActiveByDate(row)
+  );
+  if (!rows.length) return [];
+  return sortCourses(todosLosCursos().filter(curso => rows.some(row => rowAppliesToCourse(row, curso))));
+}
+
+function populateCourseSelect(cursos, selectedValue) {
+  const grouped = agruparCursosPorNivel(cursos);
   if (!Object.keys(grouped).length) {
-    courseFilter.innerHTML = "";
+    courseFilter.innerHTML = `<option value="">Elegí un curso</option>`;
     return;
   }
-  courseFilter.innerHTML = Object.entries(grouped).map(([level, courses]) => `
+  courseFilter.innerHTML = `<option value="">Elegí un curso</option>` + Object.entries(grouped).map(([level, courses]) => `
     <optgroup label="${escapeHTML(level)}">
       ${courses.map(course => `<option value="${escapeHTML(course)}">${escapeHTML(course)}</option>`).join("")}
     </optgroup>
@@ -568,33 +579,75 @@ function populateCourseSelect(selectedValue) {
   if (selectedValue && allCourses.includes(selectedValue)) courseFilter.value = selectedValue;
 }
 
+// Cascada Materia -> Periodo -> Evaluacion -> Curso (invertida respecto del
+// diseño anterior, que arrancaba por Curso). Materia/Evaluacion/Curso son
+// pasos OBLIGATORIOS sin default (el docente elige explicitamente cada uno,
+// via el placeholder de populateSelect/populateCourseSelect); Periodo es
+// opcional (default "Todos", o directamente oculto si no hay datos de
+// periodo). Curso queda acotado a los cursos que tienen mapa para la
+// materia+evaluacion elegidas ("solo va a ver los cursos de la materia").
 function refreshFilters({ keepSelection = true } = {}) {
   const previous = selectedContext();
-  populateCourseSelect(keepSelection ? previous.curso : "");
-  if (!courseFilter.value) {
-    populateSelect(subjectFilter, [], "");
-    populateSelect(evaluationFilter, [], "");
+  const previousPeriod = selectedPeriod();
+
+  const periodos = unique(mapas.filter(rowIsActiveByDate).map(row => row.PeriodoEvaluacion));
+  populatePeriodFilter(periodos, keepSelection ? previousPeriod : "");
+
+  const materias = unique(mapas
+    .filter(row => rowIsActiveByDate(row) && periodMatches(row))
+    .map(row => row.MateriaNombre)).sort(naturalSorter.compare);
+  populateSelect(subjectFilter, materias, keepSelection ? previous.materia : "", "Elegí una materia");
+  if (!subjectFilter.value) {
+    populateSelect(evaluationFilter, [], "", "Elegí una evaluación");
+    populateCourseSelect([], "");
     consignas = [];
     updateSummary();
+    updateSelectionGate();
     return;
   }
 
-  const materias = unique(mapas
-    .filter(row => rowAppliesToCourse(row, courseFilter.value) && rowIsActiveByDate(row))
-    .map(row => row.MateriaNombre));
-  populateSelect(subjectFilter, materias, keepSelection ? previous.materia : "");
-
-  const periodos = unique(mapas
-    .filter(row => rowAppliesToCourse(row, courseFilter.value) && rowIsActiveByDate(row) && row.MateriaNombre === subjectFilter.value)
-    .map(row => row.PeriodoEvaluacion));
-  populatePeriodFilter(periodos, keepSelection ? selectedPeriod() : "");
-
   const evaluaciones = unique(mapas
-    .filter(row => rowAppliesToCourse(row, courseFilter.value) && rowIsActiveByDate(row) && row.MateriaNombre === subjectFilter.value && periodMatches(row))
+    .filter(row => rowIsActiveByDate(row) && row.MateriaNombre === subjectFilter.value && periodMatches(row))
     .map(row => row.EvaluacionNombre));
-  populateSelect(evaluationFilter, evaluaciones, keepSelection ? previous.evaluacion : "");
+  populateSelect(evaluationFilter, evaluaciones, keepSelection ? previous.evaluacion : "", "Elegí una evaluación");
+  if (!evaluationFilter.value) {
+    populateCourseSelect([], "");
+    consignas = [];
+    updateSummary();
+    updateSelectionGate();
+    return;
+  }
+
+  const cursos = cursosParaMateriaEvaluacion(subjectFilter.value, evaluationFilter.value);
+  populateCourseSelect(cursos, keepSelection ? previous.curso : "");
 
   syncConsignasFromSelection();
+  updateSelectionGate();
+}
+
+// Muestra la grilla (y el resumen) recien cuando el docente completo los 4
+// pasos (Materia/Periodo/Evaluacion/Curso); antes, muestra el cartel de
+// "elegi para empezar". Tambien habilita/deshabilita Guardar y Finalizar.
+function updateSelectionGate() {
+  const ready = Boolean(courseFilter.value);
+  const prompt = document.getElementById("selectionPrompt");
+  const summarySection = document.getElementById("summarySection");
+  const gridShellSection = document.getElementById("gridShellSection");
+  if (prompt) prompt.hidden = ready;
+  if (summarySection) summarySection.hidden = !ready;
+  if (gridShellSection) gridShellSection.hidden = !ready;
+  updateActionButtonsState();
+}
+
+function updateActionButtonsState() {
+  const ready = Boolean(courseFilter.value) && !cargasPendingForCourse();
+  const closed = ready && currentLoadIsClosed();
+  const saveBtn = document.getElementById("saveBtn");
+  const finishBtn = document.getElementById("finishBtn");
+  const exportBtn = document.getElementById("exportBtn");
+  if (saveBtn) saveBtn.disabled = !ready || closed;
+  if (finishBtn) finishBtn.disabled = !ready || closed;
+  if (exportBtn) exportBtn.disabled = !ready;
 }
 
 // Celdas de agrupacion: fusiona valores adyacentes iguales con colspan
@@ -713,6 +766,7 @@ function renderBody() {
   if (!courseFilter.value) {
     table.querySelector("tbody").innerHTML = "";
     updateSummary();
+    updateActionButtonsState();
     return;
   }
   ensureGridState();
@@ -771,6 +825,7 @@ function renderBody() {
     tbody.appendChild(tr);
   });
   updateSummary();
+  updateActionButtonsState();
   notifyClosedLoadIfNeeded();
 }
 
@@ -1920,14 +1975,16 @@ async function syncFromSheets({ showLoading = false } = {}) {
   }
   saveStatus.textContent = "Sincronizando Sheets...";
   try {
-    // Las cargas viajan solo para el curso visible; el resto se pide al
-    // entrar a cada curso (ensureCargasForCourse). En el primer login todavia
-    // no hay alumnos importados y courseFilter tiene el valor demo del HTML:
-    // en ese caso no se pide curso (las trae ensureCargasForCourse despues).
-    const cursoInicial = alumnos.length ? (courseFilter.value || "") : "";
+    // Con el flujo de seleccion en 4 pasos (Materia->Periodo->Evaluacion->
+    // Curso, ninguno con default), courseFilter.value esta vacio en el
+    // primer login: nada que elegir todavia, asi que ni siquiera hace falta
+    // pedir cargas de un curso. En un re-sync a mitad de sesion (boton
+    // "Sincronizar maestros") puede haber un curso ya elegido: se aprovecha
+    // para traer sus cargas en la misma llamada.
     // Sin curso conocido se manda un centinela que no matchea ninguno: el
     // backend sin parametro devolveria TODAS las cargas (6000+ filas y
     // creciendo), que es exactamente lo que tiro abajo el bootstrap.
+    const cursoInicial = courseFilter.value || "";
     const bundle = await fetchBootstrapBundle(cursoInicial || "__sin_curso__");
     debugLog("Sync recibido | alumnos:", bundle.alumnos.length, "| mapas:", bundle.mapas.length, "| cargas:", bundle.cargas.length, `(curso: ${cursoInicial || "ninguno"})`, "| admins:", bundle.admins.length);
     applyImportedAlumnos(normalizeSheetRows(bundle.alumnos));
@@ -1937,9 +1994,6 @@ async function syncFromSheets({ showLoading = false } = {}) {
     cargasLoadedCursos = new Set(cursoInicial ? [cursoInicial] : []);
     saveStatus.textContent = admins.length ? "Sheets sincronizado" : "Sheets sincronizado - falta publicar Admins";
     if (showLoading) closeSaveModal();
-    // El curso autoseleccionado tras importar alumnos puede no ser el del
-    // bootstrap: traer sus cargas si falta.
-    ensureCargasForCourse(courseFilter.value);
   } catch (error) {
     saveStatus.textContent = "Error al sincronizar Sheets";
     if (/no autorizado/i.test(error.message)) {
@@ -2247,12 +2301,15 @@ table.addEventListener("change", event => {
   renderBody();
 });
 
-courseFilter.addEventListener("input", () => {
+// Materia/Periodo/Evaluacion son pasos que cascadean hacia abajo (cada uno
+// puede cambiar que cursos quedan disponibles): pasan por refreshFilters().
+// Curso es el ultimo escalon (no cascadea nada), asi que solo actualiza el
+// gate/grilla y dispara la carga perezosa de sus registros.
+periodFilter.addEventListener("input", () => {
   refreshFilters();
   renderHeader();
   renderBody();
   restoreLocalDraft();
-  ensureCargasForCourse(courseFilter.value);
 });
 
 subjectFilter.addEventListener("input", () => {
@@ -2263,17 +2320,22 @@ subjectFilter.addEventListener("input", () => {
 });
 
 evaluationFilter.addEventListener("input", () => {
-  syncConsignasFromSelection();
+  refreshFilters();
   renderHeader();
   renderBody();
   restoreLocalDraft();
 });
 
-periodFilter.addEventListener("input", () => {
-  refreshFilters();
+courseFilter.addEventListener("input", () => {
+  // syncConsignasFromSelection tambien filtra por curso (rowAppliesToCourse):
+  // hasta este paso courseFilter.value estaba vacio, asi que consignas recien
+  // se puede calcular bien aca, con el curso ya elegido.
+  syncConsignasFromSelection();
+  updateSelectionGate();
   renderHeader();
   renderBody();
   restoreLocalDraft();
+  ensureCargasForCourse(courseFilter.value);
 });
 
 [searchInput, showIncomplete].forEach(control => {
@@ -2576,12 +2638,12 @@ document.getElementById("addCriteriaBtn").addEventListener("click", () => {
 });
 
 // Deja los filtros apuntando a la evaluacion recien creada/editada.
+// Deja los 4 pasos (Materia->Periodo->Evaluacion->Curso) apuntando a la
+// evaluacion recien creada/editada desde el gestor de mapas, en ese orden
+// (cada paso solo tiene las opciones correctas una vez que refreshFilters
+// recalculo el paso anterior).
 function focusEvaluationInFilters(materiaNombre, evaluacionNombre, courses) {
   refreshFilters();
-  if (courses.length && !courses.includes(courseFilter.value)) {
-    courseFilter.value = courses[0];
-    refreshFilters();
-  }
   if ([...subjectFilter.options].some(option => option.value === materiaNombre)) {
     subjectFilter.value = materiaNombre;
     refreshFilters();
@@ -2592,8 +2654,17 @@ function focusEvaluationInFilters(materiaNombre, evaluacionNombre, courses) {
   }
   if ([...evaluationFilter.options].some(option => option.value === evaluacionNombre)) {
     evaluationFilter.value = evaluacionNombre;
-    syncConsignasFromSelection();
+    refreshFilters();
   }
+  if (courses.length && [...courseFilter.options].some(option => option.value === courses[0])) {
+    courseFilter.value = courses[0];
+  }
+  // Recien con el curso ya fijado se puede calcular bien consignas
+  // (syncConsignasFromSelection tambien filtra por curso); renderHeader y
+  // renderBody los llama el caller justo despues.
+  syncConsignasFromSelection();
+  updateSelectionGate();
+  ensureCargasForCourse(courseFilter.value);
 }
 
 document.getElementById("applyCriteriaBtn").addEventListener("click", () => {

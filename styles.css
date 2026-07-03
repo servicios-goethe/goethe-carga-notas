@@ -231,6 +231,28 @@ button.primary {
   margin-left: auto;
 }
 
+/* Especificidad explicita por id: .summary/.grid-shell fijan su propio
+   'display', que en teoria empata en especificidad con la regla [hidden]
+   del navegador. Esto saca cualquier ambiguedad del oculto/mostrado. */
+#summarySection[hidden],
+#gridShellSection[hidden] {
+  display: none;
+}
+
+.selection-prompt {
+  margin-top: 14px;
+  padding: 32px 24px;
+  text-align: center;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  background: #f7faf8;
+  color: var(--muted);
+}
+
+.selection-prompt strong {
+  color: var(--green-dark);
+}
+
 .summary {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
