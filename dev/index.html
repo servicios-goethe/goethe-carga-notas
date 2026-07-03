@@ -8,7 +8,7 @@
   <!-- ?v= cache-busting: bump junto con APP_VERSION en app.js en cada deploy.
        Sin esto, un iframe embebido (Treffpunkt) puede seguir sirviendo un
        app.js viejo por minutos/horas aunque el portal contenedor se recargue. -->
-  <link rel="stylesheet" href="styles.css?v=2026-07-03.1">
+  <link rel="stylesheet" href="styles.css?v=2026-07-03.2">
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -41,20 +41,8 @@
   <main>
     <section class="filters" aria-label="Filtros de carga">
       <label>
-        Curso
-        <select id="courseFilter">
-          <option value="EP2A">2do Grado A</option>
-          <option value="EP2B">2do Grado B</option>
-          <option value="EP2C">2do Grado C</option>
-        </select>
-      </label>
-      <label>
         Materia
-        <select id="subjectFilter">
-          <option>Matemática</option>
-          <option>Lengua</option>
-          <option>Conocimiento del mundo</option>
-        </select>
+        <select id="subjectFilter"></select>
       </label>
       <label id="periodLabel" hidden>
         Período
@@ -62,11 +50,11 @@
       </label>
       <label>
         Evaluación
-        <select id="evaluationFilter">
-          <option>Diagnóstico de numeración</option>
-          <option>Trabajo práctico 1</option>
-          <option>Cierre de unidad</option>
-        </select>
+        <select id="evaluationFilter"></select>
+      </label>
+      <label>
+        Curso
+        <select id="courseFilter"></select>
       </label>
       <label>
         Buscar alumno
@@ -86,7 +74,11 @@
       </div>
     </section>
 
-    <section class="summary" aria-label="Resumen">
+    <section class="selection-prompt" id="selectionPrompt" aria-label="Selecciona materia, evaluacion y curso">
+      <p>Elegí <strong>materia</strong>, <strong>evaluación</strong> y <strong>curso</strong> arriba para ver la grilla.</p>
+    </section>
+
+    <section class="summary" aria-label="Resumen" id="summarySection" hidden>
       <div>
         <span>Alumnos</span>
         <strong id="studentCount">0</strong>
@@ -105,7 +97,7 @@
       </div>
     </section>
 
-    <section class="grid-shell" aria-label="Mapa de aprendizajes">
+    <section class="grid-shell" aria-label="Mapa de aprendizajes" id="gridShellSection" hidden>
       <div class="grid-toolbar">
         <div>
           <strong id="gridTitle">2do Grado A</strong>
@@ -186,6 +178,6 @@
       </footer>
     </section>
   </div>
-  <script src="app.js?v=2026-07-03.1"></script>
+  <script src="app.js?v=2026-07-03.2"></script>
 </body>
 </html>
