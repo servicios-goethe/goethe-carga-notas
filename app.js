@@ -44,7 +44,7 @@ const APP_CONFIG = {
 // fuerza a los navegadores/iframes a bajar el archivo nuevo en vez de servir
 // una copia cacheada. Sin esto, un iframe embebido (Treffpunkt) puede seguir
 // mostrando una version vieja por minutos u horas.
-const APP_VERSION = "2026-07-02.5";
+const APP_VERSION = "2026-07-03.1";
 const ALLOWED_DOMAIN = "goethe.edu.ar";
 const storagePrefix = "goethe-mapa-aprendizajes";
 const scriptUrlStorageKey = `${storagePrefix}||apps-script-url`;
@@ -1352,6 +1352,19 @@ function applyRemoteCargasForSelection() {
   return applyCargaRows(filtered);
 }
 
+// Descarta el estado cacheado (grilla ya construida) de TODAS las
+// combinaciones materia/evaluacion de un curso. Se usa cuando llegan cargas
+// nuevas para ese curso: la proxima vez que se visite cualquiera de esas
+// combinaciones, ensureGridState la reconstruye desde cero ya con los datos
+// remotos aplicados, sin depender de que el curso siga siendo el seleccionado
+// en ese momento (ver ensureCargasForCourse).
+function invalidateStateForCourse(curso) {
+  const prefix = `${curso}||`;
+  Object.keys(state).forEach(key => {
+    if (key.startsWith(prefix)) delete state[key];
+  });
+}
+
 function applyImportedCargas(rows) {
   const mapped = normalizeCargaRows(rows).filter(row => row.DNI && row.ConsignaID);
   cargas = mapped;
@@ -1866,21 +1879,33 @@ async function ensureCargasForCourse(curso) {
   if (!curso || cargasLoadedCursos.has(curso) || cargasFetchInFlight.has(curso)) return;
   if (!scriptUrl() || !googleClientId() || !googleIdToken) return;
   cargasFetchInFlight.add(curso);
-  saveStatus.textContent = `Cargando registros de ${curso}...`;
+  if (courseFilter.value === curso) saveStatus.textContent = `Cargando registros de ${curso}...`;
   try {
     const remote = normalizeCargaRows(normalizeSheetRows(await sheetsGet("cargas", { params: { curso } })))
       .filter(row => row.DNI && row.ConsignaID);
-    // Reemplaza las cargas de ese curso y reaplica sobre la grilla actual,
-    // preservando el borrador local (se aplica despues, y pisa lo remoto).
+    // Reemplaza las cargas de ese curso.
     cargas = cargas.filter(row => row.Curso !== curso).concat(remote);
     debugLog(`Cargas de ${curso}:`, remote.length, "filas");
     cargasLoadedCursos.add(curso);
-    applyRemoteCargasForSelection();
-    restoreLocalDraft(false);
-    saveStatus.textContent = "Sheets sincronizado";
+    // No usar applyRemoteCargasForSelection() aca: depende de courseFilter.value
+    // (la seleccion ACTUAL de la UI), que puede ya no ser 'curso' si el docente
+    // cambio de curso mientras esta fetch estaba en vuelo. Aplicar contra la
+    // seleccion ambiental perdia los datos en silencio y el curso quedaba
+    // marcado como cargado sin datos, permanentemente hasta recargar la pagina.
+    // En cambio, se invalida el estado cacheado de ESTE curso puntual: se
+    // reconstruye solo, con los datos ya en `cargas`, la proxima vez que se
+    // visite (sea ahora mismo si segue seleccionado, o mas tarde).
+    invalidateStateForCourse(curso);
+    if (courseFilter.value === curso) {
+      ensureGridState();
+      restoreLocalDraft(false);
+      saveStatus.textContent = "Sheets sincronizado";
+    }
   } catch (error) {
-    saveStatus.textContent = `No se pudieron cargar los registros de ${curso}`;
-    showNotice(`No se pudieron traer los registros de ${curso} (${error.message}). La grilla queda bloqueada: volve a seleccionar el curso para reintentar.`, "Registros del curso");
+    if (courseFilter.value === curso) {
+      saveStatus.textContent = `No se pudieron cargar los registros de ${curso}`;
+      showNotice(`No se pudieron traer los registros de ${curso} (${error.message}). La grilla queda bloqueada: volve a seleccionar el curso para reintentar.`, "Registros del curso");
+    }
     debugLog(`ensureCargasForCourse ${curso} fallo:`, error.message);
   } finally {
     cargasFetchInFlight.delete(curso);
