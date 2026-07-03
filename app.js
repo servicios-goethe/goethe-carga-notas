@@ -40,7 +40,11 @@ const APP_CONFIG = {
   scriptUrl: "https://script.google.com/macros/s/AKfycbxrwC0TARz15BwQqwGVzJEqs_ZnLlBy4Q681fim94px4NlrgTVNgHMzkJw9bS3DUkUi/exec",
   googleClientId: "225474160522-7rk742a5qubfaf0te9uqiokfr4umj7al.apps.googleusercontent.com"
 };
-const APP_VERSION = "2026-07-02.4";
+// Bump junto con el ?v= de index.html (app.js y styles.css) en cada deploy:
+// fuerza a los navegadores/iframes a bajar el archivo nuevo en vez de servir
+// una copia cacheada. Sin esto, un iframe embebido (Treffpunkt) puede seguir
+// mostrando una version vieja por minutos u horas.
+const APP_VERSION = "2026-07-02.5";
 const ALLOWED_DOMAIN = "goethe.edu.ar";
 const storagePrefix = "goethe-mapa-aprendizajes";
 const scriptUrlStorageKey = `${storagePrefix}||apps-script-url`;
