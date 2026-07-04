@@ -44,7 +44,7 @@ const APP_CONFIG = {
 // fuerza a los navegadores/iframes a bajar el archivo nuevo en vez de servir
 // una copia cacheada. Sin esto, un iframe embebido (Treffpunkt) puede seguir
 // mostrando una version vieja por minutos u horas.
-const APP_VERSION = "2026-07-03.2";
+const APP_VERSION = "2026-07-04.1";
 const ALLOWED_DOMAIN = "goethe.edu.ar";
 const storagePrefix = "goethe-mapa-aprendizajes";
 const scriptUrlStorageKey = `${storagePrefix}||apps-script-url`;
@@ -1934,7 +1934,10 @@ async function ensureCargasForCourse(curso) {
   if (!curso || cargasLoadedCursos.has(curso) || cargasFetchInFlight.has(curso)) return;
   if (!scriptUrl() || !googleClientId() || !googleIdToken) return;
   cargasFetchInFlight.add(curso);
-  if (courseFilter.value === curso) saveStatus.textContent = `Cargando registros de ${curso}...`;
+  if (courseFilter.value === curso) {
+    saveStatus.textContent = `Cargando registros de ${curso}...`;
+    showSaveModal("Cargando curso", `Trayendo los registros ya cargados de ${curso}. No se puede tocar nada hasta que termine.`, "Cargando");
+  }
   try {
     const remote = normalizeCargaRows(normalizeSheetRows(await sheetsGet("cargas", { params: { curso } })))
       .filter(row => row.DNI && row.ConsignaID);
@@ -1955,10 +1958,13 @@ async function ensureCargasForCourse(curso) {
       ensureGridState();
       restoreLocalDraft(false);
       saveStatus.textContent = "Sheets sincronizado";
+      closeSaveModal();
     }
   } catch (error) {
     if (courseFilter.value === curso) {
       saveStatus.textContent = `No se pudieron cargar los registros de ${curso}`;
+      // showNotice reusa el mismo modal con boton "Aceptar": no cerrarlo aca,
+      // se cierra cuando el docente lo lee y confirma.
       showNotice(`No se pudieron traer los registros de ${curso} (${error.message}). La grilla queda bloqueada: volve a seleccionar el curso para reintentar.`, "Registros del curso");
     }
     debugLog(`ensureCargasForCourse ${curso} fallo:`, error.message);
