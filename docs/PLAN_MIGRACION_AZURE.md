@@ -13,12 +13,17 @@
 > - [x] Repo privado `servicios-goethe/goethe-mapas` creado (cuenta
 >       servicios@goethe.edu.ar).
 > - [x] Resource groups `rg-goethe-mapas-dev|prod` + presupuestos con alertas.
-> - [x] Proyecto GCP propio: `mapa-de-aprendizajes` (existente, sin
->       credenciales aún; owner servicios@). Falta: pantalla de consentimiento
->       **Interna** + OAuth Client ID tipo Web (las redirect URIs se agregan en
->       el Hito 1 cuando existan las URLs).
-> - [ ] Key Vaults `kv-goethe-mapas-dev|prod` (prod con purge protection,
->       RBAC) + Client Secret de Google cargado como `Google--ClientSecret`.
+> - [x] Proyecto GCP propio: `mapa-de-aprendizajes` (owner servicios@).
+>       **Hallazgo**: el cliente OAuth existente "Web Mapas"
+>       (`225474160522-7rk7...`) es el que usa el **GAS actual en producción**
+>       — NO se toca ni se reusa (regla: no tocamos el sistema actual). Se crea
+>       un **cliente nuevo** `goethe-mapas-web` en el mismo proyecto para el
+>       sistema nuevo (redirect URIs se agregan en el Hito 1 con las URLs).
+> - [x] Key Vaults `kv-goethe-mapas-dev|prod` creados (RBAC). Pendientes de
+>       este punto: cargar `Google--ClientSecret` (cuando exista el cliente
+>       nuevo) y **endurecer networking** (hoy quedaron en "todas las redes
+>       públicas" — ver M-04 en [PLAN_MEJORAS.md](PLAN_MEJORAS.md), se
+>       restringe SÍ O SÍ en el Hito 1 cuando existan las Container Apps).
 > - [ ] Tag de congelamiento: **el punto de freeze es el commit `01a0c44` de
 >       master** (frontend v2026-07-04.1, GAS 2026-07-02-cargas-por-curso).
 >       Joaquín crea el tag `gas-congelado-2026-07-11` sobre ese commit desde
