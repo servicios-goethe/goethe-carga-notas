@@ -118,8 +118,7 @@ Entidades:
   reemplaza el texto `Logrado|...` por una entidad reutilizable.
 - **Cargas** (nota numérica o referencia a EscalaDetalle, estado del alumno).
 - **ObservacionesAlumnos** (texto largo por alumno × evaluación).
-- **DocentesAsignaciones** (docente ↔ curso × materia) — **la tabla que cierra
-  CRÍTICA-1**; ABM administrado por superadmin.
+- **DocentesAsignaciones** (docente ↔ curso × materia) — **la tabla que cierra ALTA-1**; ABM administrado por superadmin.
 - **OpcionesMaestras** (Tipo + Valor), **Parametros** (clave/valor con
   allowlist en código), **Auditoria** (append-only, DetalleJson).
 - CHECK constraints generados desde los catálogos del código (Domain) para que
@@ -132,7 +131,7 @@ Entidades:
 ### Hito 3 — Backend seguro (~2-3 sem)
 
 - **Autorización server-side en cada endpoint** por `DocentesAsignaciones`: un
-  docente solo lee/escribe cargas de sus cursos × materias (cierra CRÍTICA-1).
+  docente solo lee/escribe cargas de sus cursos × materias (cierra ALTA-1).
 - **Bootstrap selectivo** por curso/materia (muere la descarga total y el
   JSONP; la PII deja de viajar por URL — cierra ALTA-3).
 - **Upsert de cargas transaccional**: validación allowlist (rangos de puntaje,
@@ -222,7 +221,7 @@ README (stack + orden de lectura), `PLAN_MIGRACION_AZURE.md`, `bitacora/`,
 
 | Hallazgo | Se cierra en |
 |---|---|
-| CRÍTICA-1 (autorización por curso) | Hito 2 (`DocentesAsignaciones`) + Hito 3 (auth por endpoint) |
+| ALTA-1 (autorización por curso) | Hito 2 (`DocentesAsignaciones`) + Hito 3 (auth por endpoint) |
 | CRÍTICA-2 (cierre solo frontend) | Hito 3 (chequeo de cierre server-side) |
 | ALTA-3 (PII/token en URL) | Hito 1 (cookie auth) + Hito 3 (bootstrap selectivo, sin JSONP) |
 | ALTA-4 (sin auditoría) | Hito 1 + Hito 3 (`Auditoria` en la transacción) |

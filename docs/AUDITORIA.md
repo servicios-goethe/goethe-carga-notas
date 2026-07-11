@@ -25,7 +25,7 @@ auditoría de notas, PII protegida, operación sin caídas).
 
 | # | Severidad | Hallazgo | Evidencia |
 |---|---|---|---|
-| 1 | **Crítica** | Cualquier cuenta `@goethe.edu.ar` puede leer y escribir cargas de **cualquier** curso: no existe relación docente↔curso. | `apps-script/Codigo.gs:79-90`, `:157-164` |
+| 1 | **Alta** | Cualquier **docente** del dominio puede leer y escribir cargas de **cualquier** curso: no existe relación docente↔curso. (Los alumnos NO entran: usan `@goethemail.net`, bloqueados por el control de dominio.) | `apps-script/Codigo.gs:79-90`, `:157-164` |
 | 2 | **Crítica** | El cierre de carga (`EstadoCarga=cerrado`) lo respeta solo el frontend; el backend acepta sobrescribir una evaluación finalizada. | `apps-script/Codigo.gs:86-90` |
 | 3 | **Alta** | PII (nombre + DNI de alumnos, notas) y el `idToken` de Google viajan por querystring (GET/JSONP) y quedan en logs de intermediarios. | `app.js:1583`, `apps-script/Codigo.gs:127-142` |
 | 4 | **Alta** | Sin auditoría ni historial: el guardado es *last-write-wins*; ante una disputa de nota no hay evidencia de quién la puso ni cuándo. | `apps-script/Codigo.gs:190-225` |
@@ -34,9 +34,9 @@ auditoría de notas, PII protegida, operación sin caídas).
 **Camino recomendado**: migrar a la metodología estándar (Azure), reescribiendo
 el sistema en .NET + React/TS con Azure SQL propia. La mayoría de los hallazgos
 **no se arreglan en el sistema actual sin rehacerlo**, así que corregir en GAS
-sería trabajo tirado. Se propone **un solo quick win** en GAS para mitigar las
-dos críticas mientras dura la migración (ver §Fase 2). El resto se resuelve en
-la migración.
+sería trabajo tirado. **Decisión tomada**: no se toca más el GAS productivo; el
+sistema nuevo se construye en paralelo y al terminar se apaga el viejo. Todos
+los hallazgos abiertos se resuelven en la migración (ver §Fase 2).
 
 ---
 
@@ -79,7 +79,7 @@ sobre copias de trabajo. El sistema está vivo en producción y respondió
 
 ## Fase 1 — Hallazgos con evidencia
 
-### CRÍTICA-1 — Autorización por curso inexistente
+### ALTA-1 — Autorización por curso inexistente
 
 **Evidencia**: `apps-script/Codigo.gs:86-90` (`savecargas`) y `:157-164`
 (`readCargas`).
@@ -104,12 +104,18 @@ dominio puede:
   `Curso` arbitrarios entra sin objeción; `DocenteEmail` se setea al del token,
   pero eso no impide la escritura, solo la "firma".
 
-**Escenario que lo dispara**: la solapa Alumnos tiene columna `eMail`
-(`app.js:1186`, `:533`), lo que sugiere que **los alumnos podrían tener cuenta
-del dominio**. Si así fuera, un alumno con `@goethe.edu.ar` puede modificar sus
-propias notas (o las de cualquiera) con un POST directo, sin pasar por la UI.
-Aun sin alumnos en el dominio, un docente puede alterar notas de cursos ajenos.
-**Supuesto a validar con Joaquín**: ¿los alumnos tienen cuenta del dominio?
+**Escenario que lo dispara**: un docente autenticado arma un `POST savecargas`
+(o un `GET ?action=cargas&curso=…`) con un curso que no es suyo. `DocenteEmail`
+se firma con su token, pero la escritura entra igual.
+
+**Alcance acotado (confirmado)**: los **alumnos usan `@goethemail.net`**, un
+dominio distinto, así que el control `endsWith("@goethe.edu.ar")`
+(`Codigo.gs:117`) **los bloquea por completo**: nunca pueden loguear ni hacer
+POST. El vector alumno-edita-su-nota **no aplica**. El riesgo real es entre
+docentes (un docente alterando el curso de otro) y de repudio, no de alumnos.
+Por eso este hallazgo es **Alto**, no Crítico. Igual debe cerrarse: la
+integridad de las notas no puede depender de que ningún docente arme un POST a
+mano.
 
 ### CRÍTICA-2 — El cierre de carga es solo cosmético (frontend)
 
@@ -189,7 +195,7 @@ manual de columnas en la planilla puede desalinear datos silenciosamente.
 GitHub Pages gratuito exige repo público. El código del frontend (incluida toda
 la lógica de negocio y los IDs de conexión) es visible para cualquiera. No es
 explotable por sí mismo —la seguridad no depende de ocultar el código— pero
-combinado con CRÍTICA-1 baja la barrera para construir el POST malicioso.
+combinado con ALTA-1 baja la barrera para construir el POST malicioso.
 
 ### BAJA-9 — Misceláneos
 
@@ -198,11 +204,12 @@ combinado con CRÍTICA-1 baja la barrera para construir el POST malicioso.
 - **Borradores en localStorage** sin expiración: notas en borrador quedan en el
   dispositivo indefinidamente (`app.js`, `saveLocalDraft`).
 
-### Supuestos que tuve que hacer (y cómo validarlos)
+### Supuestos y hechos confirmados
 
-1. **Los alumnos tienen cuenta `@goethe.edu.ar`** → validar con Joaquín / mirar
-   la columna `eMail` de la solapa Alumnos con datos reales. Define la
-   severidad real de CRÍTICA-1.
+1. **Los alumnos NO pueden loguear** → confirmado por Joaquín: usan
+   `@goethemail.net`, un dominio distinto al `@goethe.edu.ar` que exige el
+   control de acceso (`Codigo.gs:117`). El vector alumno-edita-su-nota está
+   cerrado por diseño; por eso ALTA-1 no es Crítica.
 2. **MFA está exigido en las cuentas Google del dominio** → validar en la
    consola de Google Workspace. La metodología lo exige (§2.1).
 3. **El backend de GAS corre "como yo" (el dueño) con acceso "Cualquiera"** →
@@ -210,7 +217,7 @@ combinado con CRÍTICA-1 baja la barrera para construir el POST malicioso.
 
 ### Riesgos que el sistema NO aborda hoy
 
-- Alteración de notas por un actor interno (docente o alumno del dominio).
+- Alteración de notas por un docente sobre cursos ajenos (actor interno).
 - Repudio: no se puede probar quién puso una nota.
 - Continuidad: no hay ambiente de dev real, ni rollback, ni backup probado.
 - Cumplimiento: PII de menores sin las garantías de la Ley 25.326.
@@ -219,10 +226,13 @@ combinado con CRÍTICA-1 baja la barrera para construir el POST malicioso.
 
 ## Fase 2 — Propuesta (qué corregir dónde)
 
-La regla es **no arreglar dos veces**: si algo se resuelve limpio en la
-migración, no se toca en GAS.
+**Decisión de Joaquín**: no se toca más el sistema actual en GAS. Se construye
+el sistema nuevo **en paralelo**, y cuando esté listo se apaga todo lo viejo
+(corte, Hito 6). Los hallazgos abiertos se resuelven **todos en la migración**,
+no en GAS: parchear una plataforma que se va a apagar es trabajo tirado, y
+tocar el GAS productivo agrega riesgo de caída sin beneficio duradero.
 
-### Ya resuelto en esta sesión (quick wins aplicados)
+### Ya resuelto en esta sesión (antes de esta decisión)
 
 - Cargas por curso en el servidor (mitiga el límite de payload) — `readCargas`.
 - Flujo de selección gated Materia→Período→Evaluación→Curso.
@@ -230,22 +240,16 @@ migración, no se toca en GAS.
 - Modal bloqueante mientras cargan los registros de un curso.
 - Validación server-side del idToken (`aud` + dominio).
 
-### Único quick win adicional propuesto en GAS (mitigación, no solución)
+### Los hallazgos abiertos NO se parchean en GAS
 
-Mitigar las dos críticas mientras dura la migración, con cambios baratos y de
-bajo riesgo en `Codigo.gs`:
-- **Rechazar sobrescritura de cargas cerradas** en `savecargas`: leer el estado
-  actual de cada `CargaID` y rechazar si está `cerrado` (cierra CRÍTICA-2).
-- **Exigir `curso` y validar pertenencia** en `readCargas`/`savecargas` contra
-  una lista docente↔curso, aunque sea una solapa nueva simple (mitiga
-  CRÍTICA-1). Si no hay apetito de mantener esa lista en Sheets, al menos
-  **loguear** accesos a cursos para tener rastro.
+Los quick wins que se habían considerado (rechazar sobrescritura de cargas
+cerradas, validar pertenencia docente↔curso) **no se implementan**: implican
+tocar `Codigo.gs` productivo. Se aceptan como **riesgo residual acotado** hasta
+el corte (recordar: los alumnos no pueden loguear, así que el vector externo
+está cerrado; el residual es entre docentes). Todo se cierra de raíz en la
+migración.
 
-> Este quick win queda **registrado, no ejecutado**, en
-> [`PLAN_MEJORAS.md`](PLAN_MEJORAS.md) a la espera de aprobación explícita. No
-> se toca GAS en esta entrega.
-
-### Todo lo demás → migración
+### Todo → migración
 
 Autorización por asignación, auditoría append-only, PII fuera de la URL,
 transacciones, CI/CD, tests, monitoreo, ambiente de dev real, backup con
