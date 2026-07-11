@@ -1,9 +1,15 @@
 # Integración con SQL Server 2022 (modelo LakeGoetheSee)
 
-> Este documento reemplaza como destino de migración a `migracion-sql.md`
-> (que proponía Supabase): la escuela ya tiene SQL Server 2022 con el modelo
-> LakeGoetheSee (DER en Lucid, 80 tablas). Acá se analiza cómo guardar en las
-> tablas académicas existentes lo que genera el Mapa de Aprendizajes.
+> **Rol actualizado** — Ya **no** es el destino de la migración. El sistema
+> migra a **Azure SQL propia** (ver [`PLAN_MIGRACION_AZURE.md`](PLAN_MIGRACION_AZURE.md),
+> "una base por sistema"). Este documento se conserva como **referencia/spec del
+> ETL de export** hacia LakeGoetheSee (Hito 5b del plan): el mapeo de entidades
+> a las tablas académicas del Lake que hay acá abajo es exactamente lo que ese
+> ETL necesita. Las preguntas abiertas de la §5 se movieron a
+> [`PLAN_MEJORAS.md`](PLAN_MEJORAS.md) reencuadradas para el export.
+>
+> _(Contexto original abajo — la escuela tiene SQL Server 2022 con el modelo
+> LakeGoetheSee, DER en Lucid, 80 tablas.)_
 
 ## 1. Lo que el DER ya resuelve (mapeo directo)
 

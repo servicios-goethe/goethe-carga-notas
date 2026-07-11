@@ -1,11 +1,14 @@
 # Plan de migración: Google Sheets → SQL
 
-> **Actualización**: el destino elegido es el **SQL Server 2022 de la escuela**
-> (modelo LakeGoetheSee), no Supabase. El análisis de integración con ese
-> modelo está en [`integracion-sql-server.md`](integracion-sql-server.md).
-> Este documento queda como referencia del análisis de opciones y de las
-> fases generales (que siguen aplicando: doble backend en /dev/, migración
-> con verificación, corte controlado).
+> **SUPERSEDED** — El plan de migración vigente es
+> [`PLAN_MIGRACION_AZURE.md`](PLAN_MIGRACION_AZURE.md): reescritura del sistema
+> en .NET + React/TS con **Azure SQL propia**, según la metodología estándar del
+> colegio. La integración con LakeGoetheSee pasa a ser un **ETL de export**, no
+> el destino directo.
+>
+> Este documento se conserva solo como registro histórico del análisis de
+> opciones de base de datos (Supabase vs. SQL Server, fases generales). No usar
+> como plan de acción.
 
 ## 1. Por qué migrar
 
