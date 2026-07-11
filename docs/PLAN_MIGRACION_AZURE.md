@@ -5,9 +5,26 @@
 > `servicios-goethe/goethe-ats`). Pendientes vivos en
 > [`PLAN_MEJORAS.md`](PLAN_MEJORAS.md).
 >
-> **Estado**: propuesta. Nada de esto está ejecutado. La creación del repo
-> nuevo y de recursos Azure es tarea de Joaquín (con aprobación explícita por
-> hito). Esta sesión solo produce documentación.
+> **Estado**: **EN EJECUCIÓN — Hito 0 en curso** (2026-07-11). Aprobado por
+> Joaquín. El sistema actual (GAS/Sheets) **no se toca más**: todo se construye
+> en paralelo y al final se apaga lo viejo.
+>
+> **Progreso Hito 0**:
+> - [x] Repo privado `servicios-goethe/goethe-mapas` creado (cuenta
+>       servicios@goethe.edu.ar).
+> - [x] Resource groups `rg-goethe-mapas-dev|prod` + presupuestos con alertas.
+> - [x] Proyecto GCP propio: `mapa-de-aprendizajes` (existente, sin
+>       credenciales aún; owner servicios@). Falta: pantalla de consentimiento
+>       **Interna** + OAuth Client ID tipo Web (las redirect URIs se agregan en
+>       el Hito 1 cuando existan las URLs).
+> - [ ] Key Vaults `kv-goethe-mapas-dev|prod` (prod con purge protection,
+>       RBAC) + Client Secret de Google cargado como `Google--ClientSecret`.
+> - [ ] Tag de congelamiento: **el punto de freeze es el commit `01a0c44` de
+>       master** (frontend v2026-07-04.1, GAS 2026-07-02-cargas-por-curso).
+>       Joaquín crea el tag `gas-congelado-2026-07-11` sobre ese commit desde
+>       la UI de GitHub (esta sesión no tiene permiso para pushear tags).
+> - [ ] Esqueleto del repo nuevo (.gitignore, CLAUDE.md, docs mínimos) —
+>       bloqueado: hay que darle acceso a `goethe-mapas` a la sesión de Claude.
 
 ## Por qué migrar (en una línea)
 
