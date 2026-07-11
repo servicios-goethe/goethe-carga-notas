@@ -10,22 +10,22 @@
 
 ## Estado del sistema actual
 
-El sistema está en producción y estable tras los fixes de la última sesión. La
-decisión tomada es **migrar a Azure** (ver plan). Mientras dura la migración, el
-sistema GAS/Sheets sigue operativo y se toca lo mínimo indispensable.
+El sistema está en producción y estable tras los fixes de la última sesión.
+**Decisión de Joaquín: no se toca más el GAS productivo.** El sistema nuevo se
+construye **en paralelo** en Azure y, cuando esté listo, se apaga todo lo viejo
+(corte). Nada de parches sobre la plataforma que se va a apagar.
 
-## Pendientes en el sistema actual (GAS/Sheets)
+## Pendientes (todos se resuelven en la migración, no en GAS)
 
 | ID | Prioridad | Pendiente | Estado |
 |---|---|---|---|
-| M-01 | Alta | **Quick win de seguridad en GAS**: rechazar sobrescritura de cargas `cerrado` en `savecargas` (cierra CRÍTICA-2 de forma barata). | Propuesto — **espera aprobación de Joaquín** |
-| M-02 | Alta | **Quick win de seguridad en GAS**: exigir `curso` y validar pertenencia docente↔curso en `readCargas`/`savecargas`, o al menos loguear accesos (mitiga CRÍTICA-1). | Propuesto — **espera aprobación** |
-| M-03 | Baja | Expiración/limpieza de borradores en `localStorage`. | Propuesto |
+| M-01 | Alta | **Autorización por curso** (relación docente↔curso↔alumno): que cada docente solo vea y cargue **sus** cursos autorizados. Hoy cualquier docente ve cualquier curso. **En algún momento —Claude decide cuándo, según cómo avance la migración— puede convenir introducir la lectura de esa tabla de relación**; el lugar natural es el sistema nuevo (Hito 2 `DocentesAsignaciones` + Hito 3 auth por endpoint del [plan](PLAN_MIGRACION_AZURE.md)). Cierra ALTA-1 de la auditoría. | Planificado en la migración |
+| M-02 | Crítica | **Cierre de carga server-side**: que una evaluación cerrada no se pueda reabrir/sobrescribir desde el backend. Cierra CRÍTICA-2. | Planificado en la migración (Hito 3) |
+| M-03 | Baja | Expiración/limpieza de borradores en `localStorage`. | Planificado en la migración (Hito 4) |
 
-> Nota: no se ejecutó ningún cambio en GAS en la entrega de auditoría (las fases
-> de auditoría son de solo lectura). M-01/M-02 se implementan solo si Joaquín
-> los aprueba y solo si el corte de migración no es inminente (para no arreglar
-> dos veces).
+> Nota: estos pendientes **no se parchean en GAS**. El riesgo residual (entre
+> docentes; los alumnos no pueden loguear porque usan `@goethemail.net`) se
+> acepta como acotado hasta el corte.
 
 ## Ya resuelto en esta sesión
 
