@@ -14,16 +14,18 @@
 >       servicios@goethe.edu.ar).
 > - [x] Resource groups `rg-goethe-mapas-dev|prod` + presupuestos con alertas.
 > - [x] Proyecto GCP propio: `mapa-de-aprendizajes` (owner servicios@).
->       **Hallazgo**: el cliente OAuth existente "Web Mapas"
->       (`225474160522-7rk7...`) es el que usa el **GAS actual en producción**
->       — NO se toca ni se reusa (regla: no tocamos el sistema actual). Se crea
->       un **cliente nuevo** `goethe-mapas-web` en el mismo proyecto para el
->       sistema nuevo (redirect URIs se agregan en el Hito 1 con las URLs).
+>       El cliente OAuth existente "Web Mapas" (`225474160522-7rk7...`) es el
+>       del **GAS actual en producción** — NO se toca ni se reusa. Cliente
+>       nuevo creado para el sistema nuevo: **`goethe-mapas-web`**, Client ID
+>       `225474160522-eb0kp9q6kkg01hb9fqfuo5hg5juii7i7.apps.googleusercontent.com`
+>       (redirect URIs se agregan en el Hito 1 con las URLs).
 > - [x] Key Vaults `kv-goethe-mapas-dev|prod` creados (RBAC). Pendientes de
->       este punto: cargar `Google--ClientSecret` (cuando exista el cliente
->       nuevo) y **endurecer networking** (hoy quedaron en "todas las redes
->       públicas" — ver M-04 en [PLAN_MEJORAS.md](PLAN_MEJORAS.md), se
->       restringe SÍ O SÍ en el Hito 1 cuando existan las Container Apps).
+>       este punto: cargar `Google--ClientSecret` (requiere rol **Key Vault
+>       Secrets Officer** asignado a Joaquín en ambos RGs — con RBAC, Owner no
+>       da acceso a datos; esperar ~5-10 min la propagación) y **endurecer
+>       networking** (hoy en "todas las redes públicas" — ver M-04 en
+>       [PLAN_MEJORAS.md](PLAN_MEJORAS.md), se restringe SÍ O SÍ en el Hito 1
+>       cuando existan las Container Apps).
 > - [ ] Tag de congelamiento: **el punto de freeze es el commit `01a0c44` de
 >       master** (frontend v2026-07-04.1, GAS 2026-07-02-cargas-por-curso).
 >       Joaquín crea el tag `gas-congelado-2026-07-11` sobre ese commit desde
