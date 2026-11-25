@@ -304,6 +304,26 @@ button.primary {
   color: var(--muted);
 }
 
+.grid-hint {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: .82rem;
+}
+
+.grid-hint[hidden] {
+  display: none;
+}
+
+.grid-hint kbd {
+  padding: 0 5px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #f4f7f5;
+  font-family: inherit;
+  font-weight: 700;
+}
+
 .toggle {
   display: flex;
   grid-template-columns: auto 1fr;
@@ -513,6 +533,13 @@ td select:focus {
   border-color: #c9d2d0;
   background: #eef2f1;
   color: var(--muted);
+}
+
+.score-cell.no-resuelto input {
+  border-color: #b9a6d9;
+  background: #f4effb;
+  color: #4b2c83;
+  font-weight: 700;
 }
 
 /* Selector de calificacion conceptual: ancho acorde a los textos de la escala */
