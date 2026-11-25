@@ -42,7 +42,8 @@
 | 3.6 | **Observación** por alumno (texto libre, sin límite práctico — pedido KG) | — | 4 | ☐ |
 | 3.7 | Totales por alumno: puntaje y % (solo consignas numéricas; las conceptuales cuentan para completitud/alertas pero no suman) | Fila completa = todas las consignas con valor válido (o Ausente). | 4 | ☐ |
 | 3.8 | Resumen del curso: Alumnos / Completos / Promedio % / Alertas | — | 4 | ☐ |
-| 3.9 | Campos legacy `UsoMaterial` y `PudoResolver` viajan en Cargas pero la UI actual ya no los edita | **Decisión pendiente**: ¿migran al modelo nuevo o se archivan? (Está en PLAN_MEJORAS como pregunta del ETL.) | 5 | ☐ |
+| 3.9 | Campo legacy `UsoMaterial` viaja en Cargas pero la UI actual no lo edita | **Decisión pendiente**: ¿migra al modelo nuevo o se archiva? | 5 | ☐ |
+| 3.10 | **No resuelto (NR)** en consignas numéricas (M-05, 2026-11): el docente tipea `-`/`n`/`nr` → la celda muestra `NR`. Vale **0** (suma 0 y su máximo cuenta en el %), cuenta como completa. Se guarda como `Puntaje=0` + `PudoResolver="NR"` | Nuevo: estado de respuesta propio en `Cargas` con CHECK constraint. ETL: `PudoResolver="NR"` → ese estado; otros valores viejos de `PudoResolver` no significan NR. | 2, 4, 5 | ☐ |
 
 ## 4. Guardado, cierre y borradores
 

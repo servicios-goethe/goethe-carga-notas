@@ -44,7 +44,7 @@ const APP_CONFIG = {
 // fuerza a los navegadores/iframes a bajar el archivo nuevo en vez de servir
 // una copia cacheada. Sin esto, un iframe embebido (Treffpunkt) puede seguir
 // mostrando una version vieja por minutos u horas.
-const APP_VERSION = "2026-07-04.1";
+const APP_VERSION = "2026-11-25.1";
 const ALLOWED_DOMAIN = "goethe.edu.ar";
 const storagePrefix = "goethe-mapa-aprendizajes";
 const scriptUrlStorageKey = `${storagePrefix}||apps-script-url`;
@@ -80,6 +80,7 @@ const connectionModal = document.getElementById("connectionModal");
 const scriptUrlInput = document.getElementById("scriptUrlInput");
 const googleClientIdInput = document.getElementById("googleClientIdInput");
 const tableWrap = document.querySelector(".table-wrap");
+const gridHint = document.getElementById("gridHint");
 const saveStatus = document.getElementById("saveStatus");
 const loginGate = document.getElementById("loginGate");
 const loginHelp = document.getElementById("loginHelp");
@@ -294,6 +295,17 @@ function normalizeEstadoAlumno(value) {
   if (normalized === "ausente") return "Ausente";
   if (normalized === "inclusion") return "Inclusion";
   return "Presente";
+}
+
+// "No lo resolvio": vale 0 (suma 0 y su maximo cuenta en el %), pero queda
+// identificado. En la grilla se tipea "-" (o "n"/"nr"). Viaja a Sheets como
+// Puntaje 0 + PudoResolver "NR": la columna ya existia en Cargas y el backend
+// la guarda sin cambios.
+const NO_RESUELTO = "NR";
+
+function normalizeNumericInput(value) {
+  const text = String(value ?? "").trim();
+  return /^(-|n|nr)$/i.test(text) ? NO_RESUELTO : text;
 }
 
 function parseScoreValue(value) {
@@ -717,6 +729,7 @@ function renderHeader() {
 function scoreIsValid(value, consigna, alumno = null) {
   if (value === "") return true;
   if (isConceptual(consigna)) return escalaValues(consigna).includes(normalizeText(value));
+  if (value === NO_RESUELTO) return true;
   const number = parseScoreValue(value);
   if (number === null) return false;
   if (number === 9) return Boolean(alumno && isInclusion(alumno));
@@ -731,6 +744,7 @@ function scoreCellState(alumno, consigna) {
   if (isAbsent(alumno)) return "not-required";
   if (value === "") return "pending";
   if (invalid) return "invalid";
+  if (value === NO_RESUELTO) return "no-resuelto";
   if (number === 9) return "exempt";
   return "valid";
 }
@@ -779,6 +793,7 @@ function renderBody() {
   const pending = cargasPendingForCourse();
   const closed = currentLoadIsClosed() || pending;
   tableWrap?.classList.toggle("loading-cargas", pending);
+  if (gridHint) gridHint.hidden = !activeConsignas().some(c => !isConceptual(c));
   tbody.innerHTML = "";
 
   state[key].forEach((alumno, index) => {
@@ -813,9 +828,9 @@ function renderBody() {
             </select>
           </td>`;
         }
-        const max = isInclusion(alumno) ? 9 : c.max;
+        // type="text" (no "number"): un input numerico no puede contener "-" ni "NR".
         return `<td class="score-cell ${cellState}">
-          <input type="number" inputmode="decimal" min="0" max="${max}" step="${c.step}" value="${value}" data-id="${alumno.id}" data-score="${c.scoreKey}" title="${escapeHTML(c.titulo)}"${disabled}>
+          <input type="text" inputmode="decimal" autocomplete="off" value="${escapeHTML(value)}" data-id="${alumno.id}" data-score="${c.scoreKey}" title="${escapeHTML(c.titulo)} (escribí - si no lo resolvió)"${disabled}>
         </td>`;
       }).join("")}
       <td class="calculated" data-total="puntaje">${totals.puntaje.toFixed(1)}</td>
@@ -842,9 +857,6 @@ function updateRenderedStudentRow(id) {
     const input = tr.querySelector(`[data-score="${CSS.escape(consigna.scoreKey)}"]`);
     if (!input) return;
     const cell = input.closest(".score-cell");
-    if (input.type === "number") {
-      input.max = String(isInclusion(alumno) ? 9 : consigna.max);
-    }
     input.disabled = isAbsent(alumno) || currentLoadIsClosed() || cargasPendingForCourse();
     if (cell) cell.className = `score-cell ${scoreCellState(alumno, consigna)}`;
   });
@@ -1242,8 +1254,9 @@ function buildCargaRows(estado = "borrador") {
   currentRows().forEach(alumno => {
     activeConsignas().forEach(consigna => {
       const puntaje = alumno.scores[consigna.scoreKey] ?? "";
+      const noResuelto = !isConceptual(consigna) && !isAbsent(alumno) && puntaje === NO_RESUELTO;
       // Conceptual: el valor de la escala viaja como texto en Puntaje.
-      const parsedPuntaje = isConceptual(consigna) ? normalizeText(puntaje) : parseScoreValue(puntaje);
+      const parsedPuntaje = isConceptual(consigna) ? normalizeText(puntaje) : (noResuelto ? 0 : parseScoreValue(puntaje));
       if (!isFinal && !isAbsent(alumno) && puntaje === "") return;
       if (!isAbsent(alumno) && !scoreIsValid(puntaje, consigna, alumno)) return;
       data.push({
@@ -1256,7 +1269,7 @@ function buildCargaRows(estado = "borrador") {
         Puntaje: isAbsent(alumno) ? "" : parsedPuntaje,
         EstadoAlumno: alumno.estadoAlumno || "Presente",
         UsoMaterial: "",
-        PudoResolver: "",
+        PudoResolver: noResuelto ? NO_RESUELTO : "",
         Observacion: alumno.observacion,
         EstadoCarga: estado,
         FechaGuardado: fecha,
@@ -1322,8 +1335,10 @@ function applyCargaRows(rows) {
   function applyCargaValue(alumno, consigna, row) {
     if (!alumno || !consigna) return 0;
     const puntaje = row.Puntaje ?? row.puntaje ?? "";
+    const noResuelto = normalizeText(row.PudoResolver ?? row.pudoresolver).toUpperCase() === NO_RESUELTO;
     alumno.scores[consigna.scoreKey] = puntaje === "" ? "" :
-      (isConceptual(consigna) ? normalizeText(puntaje) : String(puntaje).replace(",", "."));
+      isConceptual(consigna) ? normalizeText(puntaje) :
+      noResuelto ? NO_RESUELTO : String(puntaje).replace(",", ".");
     alumno.estadoAlumno = normalizeEstadoAlumno(row.EstadoAlumno || row.estadoalumno || alumno.estadoAlumno || "Presente");
     alumno.pudoResolver = row.PudoResolver || row.pudoresolver || alumno.pudoResolver;
     alumno.observacion = row.Observacion || row.observacion || alumno.observacion;
@@ -2279,7 +2294,7 @@ table.addEventListener("input", event => {
   const alumno = findStudent(id);
   if (target.dataset.score !== undefined) {
     const scoreKey = target.dataset.score;
-    alumno.scores[scoreKey] = target.value.trim();
+    alumno.scores[scoreKey] = target.tagName === "INPUT" ? normalizeNumericInput(target.value) : target.value.trim();
     saveStatus.textContent = "Cambios sin guardar";
     updateRenderedStudentRow(id);
   } else if (target.dataset.field) {
@@ -2294,7 +2309,9 @@ table.addEventListener("change", event => {
   if (!id) return;
   const alumno = findStudent(id);
   if (target.dataset.score !== undefined) {
-    alumno.scores[target.dataset.score] = target.value.trim();
+    const value = target.tagName === "INPUT" ? normalizeNumericInput(target.value) : target.value.trim();
+    alumno.scores[target.dataset.score] = value;
+    if (value === NO_RESUELTO) target.value = NO_RESUELTO;
     saveStatus.textContent = "Cambios sin guardar";
     updateRenderedStudentRow(id);
     return;
