@@ -66,4 +66,6 @@ automatización del export:
 
 ## Pedidos nuevos
 
-_(Se agregan acá al recibirse, con fecha e ID.)_
+| ID | Fecha | Pedido | Estado |
+|---|---|---|---|
+| M-05 | 2026-11-25 | **Distinguir "no lo resolvió" de "lo resolvió mal"** en consignas numéricas. Pedido docente: ambos valen 0 puntos, pero "no lo hizo" tiene que quedar identificado. Propuesta descartada: `-1` excluido de promedios (contradice el pedido —el docente dice que vale 0— y premia no intentar: el máximo baja y el % sube). Propuesta recomendada: el puntaje queda en **0** y la marca va **aparte**, en la columna `PudoResolver` de Cargas (ya existe en `CARGAS_HEADERS` y el frontend hoy la escribe vacía, así que **no requiere tocar GAS**). En la grilla, el docente tipea `-` en la celda → se muestra `NR` con otro color. En el sistema nuevo: columna con CHECK constraint en `Cargas` (sumar a COBERTURA_VS_CHECKLIST_GAS.md). | **En análisis** — falta decidir (a) si cuenta 0 o se excluye del promedio, (b) si se implementa ya en el sistema actual o solo en el nuevo |
